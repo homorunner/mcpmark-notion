@@ -5,8 +5,11 @@
 1. Create a `.env` file in the project root with:
 
 ```
-OPENAI_API_KEY=<your-openai-key>
 NOTION_API_KEY=<your-notion-token>
+# OpenAI model provider
+MCPBENCH_BASE_URL=<your-base-url>
+MCPBENCH_API_KEY=<your-api-key>
+MCPBENCH_MODEL_NAME=<your-model-name>
 ```
 
 2. Install dependencies:
