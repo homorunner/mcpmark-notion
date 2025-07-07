@@ -10,7 +10,8 @@ Usage
 -----
 $ python notion_task_runner.py [task_file_path]
 
-• `task_file_path` – Path to the file whose entire contents will be sent to the
+• `task_file_path` 
+– Path to the file whose entire contents will be sent to the
   agent as the user prompt. If omitted, `instructions.md` in the current working
   directory is used.
 
@@ -18,6 +19,7 @@ This script reuses helper utilities from `mcp_utils.py` where possible to
 avoid code duplication (e.g. environment loading and MCP server creation).
 """
 
+import os
 import asyncio
 import sys
 import json
@@ -26,17 +28,19 @@ from datetime import datetime
 
 # Reuse helper utilities from the interactive CLI implementation
 from mcp_utils import (
-    load_environment,
+    get_notion_key,
+    create_model_provider,
     create_mcp_server,
 )
 
-from agents import Agent, Runner, gen_trace_id, trace, ModelSettings
+from agents import Agent, Runner, gen_trace_id, trace, ModelSettings, ModelProvider, RunConfig
 from openai.types.responses import ResponseTextDeltaEvent
 from agents.run_context import RunContextWrapper
 
 # ---------------------------------------------------------------------------
 # Utility helpers
 # ---------------------------------------------------------------------------
+
 
 def read_task_file(path: Path) -> str:
     """Return the full text content of *path*.
@@ -56,7 +60,7 @@ def read_task_file(path: Path) -> str:
 LOGS_DIR = Path("./logs")
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
-async def run_single_task(agent: Agent, task_content: str) -> str:
+async def run_single_task(agent: Agent, task_content: str, custom_model_provider: ModelProvider) -> str:
     """Send *task_content* to *agent* and stream the response to stdout.
 
     Returns
@@ -69,7 +73,7 @@ async def run_single_task(agent: Agent, task_content: str) -> str:
     conversation = [{"content": task_content, "role": "user"}]
 
     # Run the agent and stream events
-    result = Runner.run_streamed(agent, input=conversation)
+    result = Runner.run_streamed(agent, input=conversation, run_config=RunConfig(model_provider=custom_model_provider))
 
     async for event in result.stream_events():
         if event.type == "raw_response_event" and isinstance(
@@ -99,14 +103,14 @@ async def main(task_file: Path) -> int:
     """Run the Notion batch task runner."""
     try:
         # Environment & config
-        notion_key = load_environment()
+        notion_key = get_notion_key()
+        custom_model_provider = create_model_provider()
 
         # Prepare MCP server
         async with await create_mcp_server(notion_key) as server:
             # Build the agent
             agent = Agent(
                 name="Notion Agent",
-                model="gpt-4.1-mini",
                 mcp_servers=[server],
             )
             ModelSettings.tool_choice = "required"
@@ -115,7 +119,7 @@ async def main(task_file: Path) -> int:
             trace_id = gen_trace_id()
             with trace(workflow_name="Notion Agent Batch Runner", trace_id=trace_id):
                 print(
-                    f"Trace URL: https://platform.openai.com/traces/trace?trace_id={trace_id}"\
+                    f"Trace URL: https://platform.openai.com/traces/trace?trace_id={trace_id}"
                 )
 
                 # Optional: list available tools (useful for debugging)
@@ -127,7 +131,7 @@ async def main(task_file: Path) -> int:
                 # Read the task content and execute
                 task_content = read_task_file(task_file)
                 print(f"=== Executing Task from '{task_file}' ===\n")
-                assistant_response = await run_single_task(agent, task_content)
+                assistant_response = await run_single_task(agent, task_content, custom_model_provider)
 
                 # -----------------------------------------------------------------
                 # Persist results to ./logs/<timestamp>.json
@@ -158,4 +162,4 @@ if __name__ == "__main__":
         sys.exit(exit_code)
     except KeyboardInterrupt:
         print("\nInterrupted by user. Goodbye!")
-        sys.exit(0) 
+        sys.exit(0)
