@@ -1,0 +1,1 @@
+Please go to my "Japan Travel Planner 🌸" and add a new expense under the Expenses section on January 3, 2025. The expense is for the OpenAI API cost, which is $300. There is no suitable category type for it, so please add a new tag type called "AI". Leave all other unspecified fields blank.

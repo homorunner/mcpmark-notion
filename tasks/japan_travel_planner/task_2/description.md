@@ -1,0 +1,1 @@
+Please help me update the packing list of my Japan travel plan. In the Clothes category, all items have already been packed except for the hat.

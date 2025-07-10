@@ -1,0 +1,1 @@
+Please go to my "Japan Travel Planner" and move the plan for visiting Osaka Castle from the first day to the second day in the Travel Itinerary.
