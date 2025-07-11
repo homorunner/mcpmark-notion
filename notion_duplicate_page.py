@@ -2,13 +2,9 @@
 Automate duplication of a Notion page via Playwright.
 
 Usage (environment variables preferred):
-    export NOTION_EMAIL="your_email"
-    export NOTION_PASSWORD="your_password"
     python notion_duplicate_page.py --page https://www.notion.so/your-workspace/page-id
 
-CLI flags override env vars:
-    --email EMAIL          Notion login email
-    --password PASSWORD    Notion login password
+Arguments:
     --page PAGE_URL        Absolute URL of the page to duplicate (required)
     --headless             Run browser in headless mode (default off)
 
@@ -36,11 +32,6 @@ PAGE_MENU_BUTTON_SELECTOR: Final[str] = 'div.notion-topbar-more-button'
 # Use plain text to avoid relying on Notion internal roles/structure
 DUPLICATE_MENU_ITEM_SELECTOR: Final[str] = 'text="Duplicate"'
 
-LOGIN_EMAIL_INPUT: Final[str] = 'input[type="email"]'
-LOGIN_CONTINUE_BUTTON: Final[str] = 'button:has-text("Continue with email")'
-LOGIN_PASSWORD_INPUT: Final[str] = 'input[type="password"]'
-LOGIN_SUBMIT_BUTTON: Final[str] = 'button:has-text("Continue with password")'
-
 # ---------------------------------------------------------------------------
 # Utility helpers
 # ---------------------------------------------------------------------------
@@ -61,28 +52,6 @@ def parse_args() -> argparse.Namespace:
 # ---------------------------------------------------------------------------
 # Core automation logic
 # ---------------------------------------------------------------------------
-
-def login_if_needed(page: Page, email: str, password: str) -> None:
-    """Perform login if Notion redirects to the sign-in page."""
-    if "notion.so/login" not in page.url:
-        return  # Already authenticated
-
-    if not email or not password:
-        log("Missing credentials and interactive login required – aborting.")
-        sys.exit(1)
-
-    log("Filling email…")
-    page.fill(LOGIN_EMAIL_INPUT, email)
-    page.click(LOGIN_CONTINUE_BUTTON)
-    page.wait_for_selector(LOGIN_PASSWORD_INPUT)
-
-    log("Filling password…")
-    page.fill(LOGIN_PASSWORD_INPUT, password)
-    page.click(LOGIN_SUBMIT_BUTTON)
-    # Wait for workspace to load (any internal URL)
-    page.wait_for_url("https://www.notion.so/*", timeout=90_000)
-    log("Logged in successfully ✅")
-
 
 def duplicate_current_page(page: Page) -> None:
     """Open the page menu (•••) and click Duplicate once."""
