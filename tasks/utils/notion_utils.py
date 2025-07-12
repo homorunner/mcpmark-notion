@@ -20,6 +20,16 @@ def find_page(notion: Client, page_title: str):
     search_results = notion.search(query=page_title, filter={"property": "object", "value": "page"}).get("results")
     if not search_results:
         return None
+    
+    if len(search_results) == 1:
+        return search_results[0]["id"]
+    
+    for result in search_results:
+        title_texts = result.get("properties", {}).get("title", {}).get("title", [])
+        for text_obj in title_texts:
+            if page_title.lower() in text_obj.get("plain_text", "").lower():
+                return result["id"]
+    
     return search_results[0]["id"]
 
 def find_database_in_block(notion: Client, block_id: str, db_title: str):
