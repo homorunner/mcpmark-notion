@@ -7,9 +7,10 @@ _backup
 __pycache__/
 *.py[codz]
 *$py.class
-./logs
-./logs/*
+logs
+logs/*
 .DS_Store
+notion-sdk-py/
 
 # for playwright cookies
 notion_state.json

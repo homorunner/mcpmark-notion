@@ -13,24 +13,53 @@ def get_notion_client():
         sys.exit(1)
     return Client(auth=api_key)
 
-def find_page(notion: Client, page_title: str):
+def _find_object(notion: Client, title: str, object_type: str):
+    """Generic helper to find a Notion page or database by title.
+
+    Args:
+        notion: Authenticated Notion Client.
+        title: Title (or partial title) to search for.
+        object_type: Either "page" or "database".
+
+    Returns:
+        The ID string if found, otherwise None.
     """
-    Finds a page by its title.
-    """
-    search_results = notion.search(query=page_title, filter={"property": "object", "value": "page"}).get("results")
+    search_results = (
+        notion.search(query=title, filter={"property": "object", "value": object_type}).get("results")
+        or []
+    )
+
     if not search_results:
         return None
-    
+
+    # Shortcut when there is only one match
     if len(search_results) == 1:
         return search_results[0]["id"]
-    
+
+    # Attempt to find a case-insensitive match on the title field
     for result in search_results:
-        title_texts = result.get("properties", {}).get("title", {}).get("title", [])
-        for text_obj in title_texts:
-            if page_title.lower() in text_obj.get("plain_text", "").lower():
+        if object_type == "page":
+            # Pages store their title inside the "properties.title.title" rich text list
+            title_rich_texts = result.get("properties", {}).get("title", {}).get("title", [])
+        else:  # database
+            title_rich_texts = result.get("title", [])
+
+        for text_obj in title_rich_texts:
+            if title.lower() in text_obj.get("plain_text", "").lower():
                 return result["id"]
-    
+
+    # Fallback: return the first result
     return search_results[0]["id"]
+
+
+def find_page(notion: Client, page_title: str):
+    """Finds a page by title. Wrapper around _find_object with object_type='page'."""
+    return _find_object(notion, page_title, "page")
+
+
+def find_database(notion: Client, db_title: str):
+    """Finds a database by title. Wrapper around _find_object with object_type='database'."""
+    return _find_object(notion, db_title, "database")
 
 def find_database_in_block(notion: Client, block_id: str, db_title: str):
     """

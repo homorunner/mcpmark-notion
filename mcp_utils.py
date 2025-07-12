@@ -48,7 +48,7 @@ def create_model_provider() -> ModelProvider:
     ValueError
         If required model-related environment variables are missing.
     """
-    load_dotenv()
+    load_dotenv(override=True)
 
     base_url = os.getenv("MCPBENCH_BASE_URL") or ""
     api_key = os.getenv("MCPBENCH_API_KEY") or ""
