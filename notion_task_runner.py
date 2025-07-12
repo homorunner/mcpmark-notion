@@ -128,6 +128,7 @@ async def main(task_file: Path) -> int:
                 tools = await server.list_tools(run_context, dummy_agent)
                 print(f"{len(tools)} tools available\n")
                 print(tools)
+                
                 # Read the task content and execute
                 task_content = read_task_file(task_file)
                 print(f"=== Executing Task from '{task_file}' ===\n")
