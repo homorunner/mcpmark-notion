@@ -73,7 +73,7 @@ async def run_single_task(agent: Agent, task_content: str, custom_model_provider
     conversation = [{"content": task_content, "role": "user"}]
 
     # Run the agent and stream events
-    result = Runner.run_streamed(agent, input=conversation, run_config=RunConfig(model_provider=custom_model_provider))
+    result = Runner.run_streamed(agent, max_turns=20, input=conversation, run_config=RunConfig(model_provider=custom_model_provider))
 
     async for event in result.stream_events():
         if event.type == "raw_response_event" and isinstance(
@@ -127,7 +127,7 @@ async def main(task_file: Path) -> int:
                 dummy_agent = Agent(name="Tmp", instructions="Tmp")
                 tools = await server.list_tools(run_context, dummy_agent)
                 print(f"{len(tools)} tools available\n")
-
+                print(tools)
                 # Read the task content and execute
                 task_content = read_task_file(task_file)
                 print(f"=== Executing Task from '{task_file}' ===\n")
