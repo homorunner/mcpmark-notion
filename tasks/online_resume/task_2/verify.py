@@ -17,7 +17,7 @@ def verify(notion: Client) -> bool:
     language_entry = "🇨🇳\xa0Chinese"
     
     heading_found = False
-    for block in all_blocks:
+    for i, block in enumerate(all_blocks):
         block_type = block.get("type")
         if block_type in ["heading_1", "heading_2", "heading_3"]:
             if heading_found: # we've passed the languages section
@@ -27,7 +27,7 @@ def verify(notion: Client) -> bool:
                 continue
         
         if heading_found:
-            if language_entry == notion_utils.get_block_plain_text(block):
+            if language_entry == notion_utils.get_block_plain_text(block) and "English" in notion_utils.get_block_plain_text(all_blocks[i-1]):
                 print(f"Success: Verified that '{language_entry}' was added under '{heading_text}'.")
                 return True
 
