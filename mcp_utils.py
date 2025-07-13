@@ -20,43 +20,59 @@ __all__ = [
 ]
 
 
-def get_notion_key() -> str:
+def get_notion_key(notion_key: str = None) -> str:
     """Load environment variables and return the Notion API key.
+
+    Parameters
+    ----------
+    notion_key : str, optional
+        Notion API key. If not provided, will use NOTION_API_KEY environment variable.
 
     Raises
     ------
     ValueError
-        If the NOTION_API_KEY environment variable is missing.
+        If the notion_key parameter and NOTION_API_KEY environment variable are both missing.
     """
     # Load variables from a .env file if present
     load_dotenv()
 
-    notion_key = os.getenv("NOTION_API_KEY")
+    notion_key = notion_key or os.getenv("NOTION_API_KEY")
     if not notion_key:
         raise ValueError(
-            "NOTION_API_KEY environment variable is required. "
-            "Please add it to your .env file or set it as an environment variable."
+            "Please provide notion_key as parameter or set NOTION_API_KEY "
+            "environment variable in your .env file."
         )
     return notion_key
 
 
-def create_model_provider() -> ModelProvider:
-    """Create and return a custom model provider based on environment variables.
+def create_model_provider(base_url: str = None, api_key: str = None, model_name: str = None) -> ModelProvider:
+    """Create and return a custom model provider.
+
+    Parameters
+    ----------
+    base_url : str, optional
+        Model provider base URL. If not provided, will use MCPBENCH_BASE_URL environment variable.
+    api_key : str, optional
+        API key for model provider. If not provided, will use MCPBENCH_API_KEY environment variable.
+    model_name : str, optional
+        Model name to use. If not provided, will use MCPBENCH_MODEL_NAME environment variable.
 
     Raises
     ------
     ValueError
-        If required model-related environment variables are missing.
+        If required model-related parameters are missing from both arguments and environment variables.
     """
     load_dotenv(override=True)
 
-    base_url = os.getenv("MCPBENCH_BASE_URL") or ""
-    api_key = os.getenv("MCPBENCH_API_KEY") or ""
-    model_name = os.getenv("MCPBENCH_MODEL_NAME") or ""
+    # Use provided parameters or fall back to environment variables
+    base_url = base_url or os.getenv("MCPBENCH_BASE_URL") or ""
+    api_key = api_key or os.getenv("MCPBENCH_API_KEY") or ""
+    model_name = model_name or os.getenv("MCPBENCH_MODEL_NAME") or ""
 
     if not base_url or not api_key or not model_name:
         raise ValueError(
-            "Please set MCPBENCH_BASE_URL, MCPBENCH_API_KEY, and MCPBENCH_MODEL_NAME "
+            "Please provide base_url, api_key, and model_name as parameters or set "
+            "MCPBENCH_BASE_URL, MCPBENCH_API_KEY, and MCPBENCH_MODEL_NAME "
             "in your .env file or as environment variables."
         )
 
