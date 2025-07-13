@@ -1,4 +1,9 @@
 logs
+.claude
+.gemini
+results
+materials
+scripts
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

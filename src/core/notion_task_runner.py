@@ -27,7 +27,7 @@ from pathlib import Path
 from datetime import datetime
 
 # Reuse helper utilities from the interactive CLI implementation
-from mcp_utils import (
+from utils.mcp_utils import (
     get_notion_key,
     create_model_provider,
     create_mcp_server,

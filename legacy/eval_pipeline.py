@@ -17,9 +17,10 @@ import sys
 import time
 import tempfile
 import subprocess
+import json
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor
 
@@ -29,6 +30,8 @@ from results_reporter import ResultsReporter, EvaluationReport, TaskResult
 from mcp_utils import get_notion_key, create_model_provider, create_mcp_server
 from notion_task_runner import run_single_task, read_task_file
 from agents import Agent, ModelSettings
+from page_duplication_manager import PageDuplicationManager
+from task_template_manager import TaskTemplateManager
 
 
 class EvaluationPipeline:
