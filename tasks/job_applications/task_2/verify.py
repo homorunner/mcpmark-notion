@@ -2,13 +2,20 @@ import sys
 from notion_client import Client
 from tasks.utils import notion_utils
 
-def verify(notion: Client) -> bool:
+def verify(notion: Client, main_id: str = None) -> bool:
     """
     Verifies that the 'Interview Schedule' database has been created with correct properties
     and contains at least three sample entries.
     """
     # Find the job applications page
-    page_id = notion_utils.find_page(notion, "Job Applications")
+    page_id = None
+    if main_id:
+        found_id, object_type = notion_utils.find_page_or_database_by_id(notion, main_id)
+        if found_id and object_type == 'page':
+            page_id = found_id
+    
+    if not page_id:
+        page_id = notion_utils.find_page(notion, "Job Applications")
     if not page_id:
         print("Error: Page 'Job Applications' not found.", file=sys.stderr)
         return False
@@ -83,7 +90,8 @@ def main():
     Executes the verification process and exits with a status code.
     """
     notion = notion_utils.get_notion_client()
-    if verify(notion):
+    main_id = sys.argv[1] if len(sys.argv) > 1 else None
+    if verify(notion, main_id):
         sys.exit(0)
     else:
         sys.exit(1)

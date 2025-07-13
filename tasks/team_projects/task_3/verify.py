@@ -92,9 +92,16 @@ def _verify_tasks(notion: Client, task_ids: List[str], expected_titles: List[str
     return True
 
 
-def verify(notion: Client) -> bool:
+def verify(notion: Client, main_id: str = None) -> bool:
     # 1. Locate Team Projects page & Projects database
-    team_page_id = notion_utils.find_page(notion, "Team Projects")
+    team_page_id = None
+    if main_id:
+        found_id, object_type = notion_utils.find_page_or_database_by_id(notion, main_id)
+        if found_id and object_type == 'page':
+            team_page_id = found_id
+    
+    if not team_page_id:
+        team_page_id = notion_utils.find_page(notion, "Team Projects")
     if not team_page_id:
         print("Error: Team Projects page not found.", file=sys.stderr)
         return False
@@ -189,7 +196,8 @@ def verify(notion: Client) -> bool:
 
 def main():
     notion = notion_utils.get_notion_client()
-    if verify(notion):
+    main_id = sys.argv[1] if len(sys.argv) > 1 else None
+    if verify(notion, main_id):
         sys.exit(0)
     else:
         sys.exit(1)

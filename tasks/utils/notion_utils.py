@@ -57,6 +57,54 @@ def find_page(notion: Client, page_title: str):
     return _find_object(notion, page_title, "page")
 
 
+def get_page_by_id(notion: Client, page_id: str):
+    """Gets a page by its ID. Returns the page object if found, None otherwise."""
+    try:
+        return notion.pages.retrieve(page_id=page_id)
+    except Exception:
+        return None
+
+
+def find_page_by_id(notion: Client, page_id: str):
+    """Finds a page by its ID and returns the ID if it exists, None otherwise."""
+    try:
+        notion.pages.retrieve(page_id=page_id)
+        return page_id
+    except Exception:
+        return None
+
+
+def find_database_by_id(notion: Client, database_id: str):
+    """Finds a database by its ID and returns the ID if it exists, None otherwise."""
+    try:
+        notion.databases.retrieve(database_id=database_id)
+        return database_id
+    except Exception:
+        return None
+
+
+def find_page_or_database_by_id(notion: Client, object_id: str):
+    """
+    Finds either a page or database by ID. Returns a tuple (object_id, object_type) 
+    where object_type is either 'page' or 'database', or (None, None) if not found.
+    """
+    # Try as page first
+    try:
+        notion.pages.retrieve(page_id=object_id)
+        return (object_id, 'page')
+    except Exception:
+        pass
+    
+    # Try as database
+    try:
+        notion.databases.retrieve(database_id=object_id)
+        return (object_id, 'database')
+    except Exception:
+        pass
+    
+    return (None, None)
+
+
 def find_database(notion: Client, db_title: str):
     """Finds a database by title. Wrapper around _find_object with object_type='database'."""
     return _find_object(notion, db_title, "database")

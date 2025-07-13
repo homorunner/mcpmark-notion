@@ -3,7 +3,7 @@ from notion_client import Client
 from tasks.utils import notion_utils
 
 
-def verify(notion: Client) -> bool:
+def verify(notion: Client, main_id: str = None) -> bool:
     """Verification for Social Media Content Planning System – Task 4.
 
     Requirement:
@@ -11,7 +11,7 @@ def verify(notion: Client) -> bool:
       been postponed by 14 days, resulting in the following target dates:
 
         • "7 Days, 7 Home Styling Ideas"                → 2025-08-10
-        • "Show Us: What’s Your Favorite Corner at Home?" → 2025-08-06
+        • "Show Us: What's Your Favorite Corner at Home?" → 2025-08-06
         • "Minimalism: More Than White Walls & Empty Shelves" → 2025-08-02
         • "5 Small Habits That Make Home Feel Warmer"   → 2025-07-30
 
@@ -19,7 +19,14 @@ def verify(notion: Client) -> bool:
     """
 
     db_title = "Social Media Content Planning System"
-    database_id = notion_utils.find_database(notion, db_title)
+    database_id = None
+    if main_id:
+        found_id, object_type = notion_utils.find_page_or_database_by_id(notion, main_id)
+        if found_id and object_type == 'database':
+            database_id = found_id
+    
+    if not database_id:
+        database_id = notion_utils.find_database(notion, db_title)
     if not database_id:
         print(f"Error: Database '{db_title}' not found.", file=sys.stderr)
         return False
@@ -89,7 +96,8 @@ def verify(notion: Client) -> bool:
 
 def main():
     notion = notion_utils.get_notion_client()
-    if verify(notion):
+    main_id = sys.argv[1] if len(sys.argv) > 1 else None
+    if verify(notion, main_id):
         sys.exit(0)
     else:
         sys.exit(1)

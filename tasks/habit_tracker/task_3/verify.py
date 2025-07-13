@@ -39,9 +39,16 @@ def _normalize_row(cells: List[str]) -> Tuple[str, int, str, str]:
     return (habit, days, status, missed)
 
 
-def verify(notion: Client) -> bool:
+def verify(notion: Client, main_id: str = None) -> bool:
     # Locate Habit Tracker page
-    page_id = notion_utils.find_page(notion, "habit tracker") or notion_utils.find_page(notion, "Habit Tracker")
+    page_id = None
+    if main_id:
+        found_id, object_type = notion_utils.find_page_or_database_by_id(notion, main_id)
+        if found_id and object_type == 'page':
+            page_id = found_id
+    
+    if not page_id:
+        page_id = notion_utils.find_page(notion, "habit tracker") or notion_utils.find_page(notion, "Habit Tracker")
     if not page_id:
         print("Error: Habit Tracker page not found.", file=sys.stderr)
         return False
@@ -110,7 +117,8 @@ def verify(notion: Client) -> bool:
 
 def main():
     notion = notion_utils.get_notion_client()
-    if verify(notion):
+    main_id = sys.argv[1] if len(sys.argv) > 1 else None
+    if verify(notion, main_id):
         sys.exit(0)
     else:
         sys.exit(1)

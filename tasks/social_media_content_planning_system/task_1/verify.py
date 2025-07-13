@@ -2,7 +2,7 @@ import sys
 from notion_client import Client
 from tasks.utils import notion_utils
 
-def verify(notion: Client) -> bool:
+def verify(notion: Client, main_id: str = None) -> bool:
     """
     For every entry in the "Social Media Content Planning System" database where:
       • Status == "Planning" (Status property)
@@ -12,7 +12,14 @@ def verify(notion: Client) -> bool:
     matching entry exists.
     """
     db_title = "Social Media Content Planning System"
-    database_id = notion_utils.find_database(notion, db_title)
+    database_id = None
+    if main_id:
+        found_id, object_type = notion_utils.find_page_or_database_by_id(notion, main_id)
+        if found_id and object_type == 'database':
+            database_id = found_id
+    
+    if not database_id:
+        database_id = notion_utils.find_database(notion, db_title)
     if not database_id:
         print(f"Error: Database '{db_title}' not found.", file=sys.stderr)
         return False
@@ -68,7 +75,8 @@ def verify(notion: Client) -> bool:
 def main():
     """Executes the verification process and exits with a status code."""
     notion = notion_utils.get_notion_client()
-    if verify(notion):
+    main_id = sys.argv[1] if len(sys.argv) > 1 else None
+    if verify(notion, main_id):
         sys.exit(0)
     else:
         sys.exit(1)

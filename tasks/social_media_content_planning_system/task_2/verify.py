@@ -3,7 +3,7 @@ from notion_client import Client
 from tasks.utils import notion_utils
 
 
-def verify(notion: Client) -> bool:
+def verify(notion: Client, main_id: str = None) -> bool:
     """Verification for Social Media Content Planning System – Task 2.
 
     Requirements to satisfy:
@@ -11,17 +11,24 @@ def verify(notion: Client) -> bool:
         AND Status is NOT "Published", the Expected Engagement should have been
         increased by 200.  
       • Based on the provided ground-truth, the rows that must satisfy this are:
-            1. "Show Us: What’s Your Favorite Corner at Home?"   → 3400
+            1. "Show Us: What's Your Favorite Corner at Home?"   → 3400
             2. "5 Small Habits That Make Home Feel Warmer"        → 1100
             3. "Summer Eco-Friendly Home Makeover Guide"          → 1050
-            4. "Behind the Brand: A Founder’s Morning Ritual"     → 2100
+            4. "Behind the Brand: A Founder's Morning Ritual"     → 2100
 
     The script verifies that each of these rows exists, still matches the filtering
     conditions, and has the exact Expected Engagement value above.
     """
 
     db_title = "Social Media Content Planning System"
-    database_id = notion_utils.find_database(notion, db_title)
+    database_id = None
+    if main_id:
+        found_id, object_type = notion_utils.find_page_or_database_by_id(notion, main_id)
+        if found_id and object_type == 'database':
+            database_id = found_id
+    
+    if not database_id:
+        database_id = notion_utils.find_database(notion, db_title)
     if not database_id:
         print(f"Error: Database '{db_title}' not found.", file=sys.stderr)
         return False
@@ -116,7 +123,8 @@ def verify(notion: Client) -> bool:
 
 def main():
     notion = notion_utils.get_notion_client()
-    if verify(notion):
+    main_id = sys.argv[1] if len(sys.argv) > 1 else None
+    if verify(notion, main_id):
         sys.exit(0)
     else:
         sys.exit(1)
