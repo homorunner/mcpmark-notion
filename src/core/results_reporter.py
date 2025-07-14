@@ -34,8 +34,7 @@ class TaskResult:
     task_id: Optional[int] = None
     error_message: Optional[str] = None
     logs_path: Optional[str] = None
-    model_output: Optional[str] = None  # Raw assistant output (if captured)
-    page_id: Optional[str] = None       # ID of the duplicated Notion page (if any)
+    model_output: Optional[str] = None  # Raw assistant output (if captured) 
     
     @property
     def status(self) -> str:

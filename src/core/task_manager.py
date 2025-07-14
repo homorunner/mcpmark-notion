@@ -20,6 +20,9 @@ class Task:
     task_id: int
     description_path: Path
     verify_path: Path
+    original_template_url: Optional[str] = None
+    duplicated_template_url: Optional[str] = None
+    duplicated_template_id: Optional[str] = None
     
     @property
     def name(self) -> str:
@@ -31,26 +34,7 @@ class Task:
         if self.description_path.exists():
             return self.description_path.read_text(encoding="utf-8")
         return ""
-
-    # ------------------------------------------------------------------
-    # Backwards-compatibility helpers (legacy pipeline expects these attrs)
-    # ------------------------------------------------------------------
-
-    @property
-    def description(self) -> str:  # noqa: D401 – kept for compatibility
-        """Alias for :py:meth:`get_description` (legacy attribute)."""
-        return self.get_description()
-
-    @property
-    def verify_script(self) -> Path:  # noqa: D401 – kept for compatibility
-        """Alias for :py:attr:`verify_path` (legacy attribute)."""
-        return self.verify_path
-
-    @property
-    def description_file(self) -> Path:  # noqa: D401 – legacy alias
-        """Alias for :py:attr:`description_path` expected by some scripts."""
-        return self.description_path
-
+    
 
 class TaskManager:
     """Manages task discovery and filtering for MCPBench evaluation."""
@@ -147,97 +131,3 @@ class TaskManager:
         
         # If no matches found, return empty list
         return []
-    
-    def get_task_summary(self) -> Dict[str, int]:
-        """Get a summary of tasks by category."""
-        tasks = self.discover_all_tasks()
-        summary = {}
-        
-        for task in tasks:
-            if task.category not in summary:
-                summary[task.category] = 0
-            summary[task.category] += 1
-        
-        return summary
-    
-    def validate_task_structure(self) -> List[str]:
-        """Validate the task directory structure and return any issues."""
-        issues = []
-        
-        if not self.tasks_root.exists():
-            issues.append(f"Tasks root directory does not exist: {self.tasks_root}")
-            return issues
-        
-        # Check each category directory
-        for category_dir in self.tasks_root.iterdir():
-            if not category_dir.is_dir() or category_dir.name.startswith('.') or category_dir.name == 'utils':
-                continue
-            
-            category = category_dir.name
-            
-            # Check for task directories
-            task_dirs = [d for d in category_dir.iterdir() if d.is_dir() and d.name.startswith('task_')]
-            
-            if not task_dirs:
-                issues.append(f"No task directories found in category: {category}")
-                continue
-            
-            for task_dir in task_dirs:
-                task_name = f"{category}/{task_dir.name}"
-                
-                # Check for required files
-                description_path = task_dir / "description.md"
-                verify_path = task_dir / "verify.py"
-                
-                if not description_path.exists():
-                    issues.append(f"Missing description.md in {task_name}")
-                
-                if not verify_path.exists():
-                    issues.append(f"Missing verify.py in {task_name}")
-        
-        return issues
-
-
-def main():
-    """Example usage of TaskManager."""
-    manager = TaskManager()
-    
-    print("=== MCPBench Task Manager ===\n")
-    
-    # Validate structure
-    issues = manager.validate_task_structure()
-    if issues:
-        print("Structure Issues:")
-        for issue in issues:
-            print(f"  - {issue}")
-        print()
-    
-    # Show summary
-    summary = manager.get_task_summary()
-    print("Task Summary:")
-    total_tasks = 0
-    for category, count in summary.items():
-        print(f"  {category}: {count} tasks")
-        total_tasks += count
-    print(f"  Total: {total_tasks} tasks\n")
-    
-    # Show categories
-    categories = manager.get_categories()
-    print(f"Available Categories: {', '.join(categories)}\n")
-    
-    # Example filtering
-    print("Filter Examples:")
-    print(f"  All tasks: {len(manager.filter_tasks('all'))} tasks")
-    if categories:
-        first_category = categories[0]
-        filtered = manager.filter_tasks(first_category)
-        print(f"  {first_category}: {len(filtered)} tasks")
-        
-        if filtered:
-            first_task = filtered[0]
-            single_task = manager.filter_tasks(first_task.name)
-            print(f"  {first_task.name}: {len(single_task)} task")
-
-
-if __name__ == "__main__":
-    main()
