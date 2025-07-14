@@ -241,16 +241,17 @@ class TemplateManager:
                 log(f"❌ Failed to archive template {template_id}: {e}")
                 return False
     
-    def process_task_templates(self, tasks: List[Task]) -> Dict[str, Dict[str, Optional[str]]]:
+    def process_task_templates(self, tasks: List[Task]) -> None:
         """Process templates for a list of tasks.
         
+        Updates each task object with template information:
+        - original_template_url
+        - duplicated_template_url
+        - duplicated_template_id
+        
         Args:
-            tasks: List of Task objects
-            
-        Returns:
-            Dictionary mapping task names to template info
+            tasks: List of Task objects to process
         """
-        results = {}
         
         # Step 1: Group tasks by category
         categories = {}
@@ -259,7 +260,7 @@ class TemplateManager:
                 categories[task.category] = []
             categories[task.category].append(task)
         
-        # Step 3: Duplicate template for each task
+        # Step 2: Duplicate template for each task
         for category, category_tasks in categories.items():
             # Obtain meta info of template
             template_title = self._category_to_template_title(category)
@@ -268,11 +269,9 @@ class TemplateManager:
             if not template_info:
                 logger.warning(f"Template not found for category '{category}' (title: '{template_title}')")
                 for task in category_tasks:
-                    results[task.name] = {
-                        "original_template_url": None,
-                        "duplicated_template_url": None,
-                        "duplicated_template_id": None
-                    }
+                    task.original_template_url = None
+                    task.duplicated_template_url = None
+                    task.duplicated_template_id = None
                 continue
             
             _, template_url = template_info
@@ -284,17 +283,11 @@ class TemplateManager:
                         template_url, category, task.name
                     )
                     
-                    results[task.name] = {
-                        "original_template_url": template_url,
-                        "duplicated_template_url": duplicated_url,
-                        "duplicated_template_id": duplicated_id
-                    }
+                    task.original_template_url = template_url
+                    task.duplicated_template_url = duplicated_url
+                    task.duplicated_template_id = duplicated_id
                 except Exception as e:
                     logger.error(f"Failed to duplicate template for {task.name}: {e}")
-                    results[task.name] = {
-                        "original_template_url": template_url,
-                        "duplicated_template_url": None,
-                        "duplicated_template_id": None
-                    }
-        
-        return results
+                    task.original_template_url = template_url
+                    task.duplicated_template_url = None
+                    task.duplicated_template_id = None

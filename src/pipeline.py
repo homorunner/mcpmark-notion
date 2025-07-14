@@ -122,13 +122,7 @@ class EvaluationPipeline:
         tasks = self.task_manager.filter_tasks(task_filter)
         
         # Process templates and update task objects with template info
-        template_results = self.template_manager.process_task_templates(tasks)
-        for task in tasks:
-            if task.name in template_results:
-                task_template_info = template_results[task.name]
-                task.original_template_url = task_template_info["original_template_url"]
-                task.duplicated_template_url = task_template_info["duplicated_template_url"]
-                task.duplicated_template_id = task_template_info["duplicated_template_id"]
+        self.template_manager.process_task_templates(tasks)
     
         start_time = time.time()
         results = []
