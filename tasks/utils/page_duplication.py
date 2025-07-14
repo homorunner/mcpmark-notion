@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Final, Optional
+from typing import Final, Optional, Tuple
 
 from playwright.sync_api import (
     TimeoutError as PlaywrightTimeoutError,
@@ -120,8 +120,14 @@ def _find_child_page_id_recursive(notion_client, block_id: str, title: str) -> O
 # Playwright driven duplication helpers
 # ---------------------------------------------------------------------------
 
-def duplicate_current_page(page: Page, new_title: str | None = None) -> None:
-    """Duplicate the *currently open* Notion page and optionally rename it."""
+def duplicate_current_page(page: Page, new_title: str | None = None) -> Optional[str]:
+    """Duplicate the *currently open* Notion page and optionally rename it.
+
+    Returns
+    -------
+    Optional[str]
+        The page ID of the duplicated page if the duplication was successful, otherwise ``None``.
+    """
     try:
         log("Opening page menu…")
         page.wait_for_selector(PAGE_MENU_BUTTON_SELECTOR, state="visible", timeout=20_000)
@@ -133,22 +139,29 @@ def duplicate_current_page(page: Page, new_title: str | None = None) -> None:
 
         original_url = page.url
         duplicated_url: str | None = None
+        duplicated_page_id: str | None = None
 
         log("Waiting for duplicated page to load (up to 60 s)…")
         try:
             page.wait_for_url(lambda url: url != original_url, timeout=60_000)
             duplicated_url = page.url
             log(f"✅ Duplicated page loaded at {duplicated_url}")
+            try:
+                duplicated_page_id = _extract_page_id_from_url(duplicated_url)
+            except Exception:
+                duplicated_page_id = None
         except PlaywrightTimeoutError:
             log("❌ Timed out waiting for the duplicated page. Please check manually.")
             page.pause()
 
-        if new_title and duplicated_url:
+        if new_title and duplicated_page_id:
             try:
-                page_id = _extract_page_id_from_url(duplicated_url)
-                _rename_page_via_api(page_id, new_title)
+                _rename_page_via_api(duplicated_page_id, new_title)
             except Exception as exc:
                 log(f"⚠️  Skipped renaming due to error: {exc}")
+
+        # Return the new page ID (or None if duplication failed)
+        return duplicated_page_id
     except PlaywrightTimeoutError:
         log("❌ Failed to duplicate. Ensure the page is fully loaded, duplicate manually if needed.")
         page.pause()
@@ -164,8 +177,15 @@ def duplicate_child_page(
     target_title: str,
     *,
     headless: bool = False,
-) -> None:
-    """Duplicate *source_title* under *parent_url* and rename to *target_title*."""
+) -> Tuple[bool, Optional[str]]:
+    """Duplicate *source_title* under *parent_url* and rename to *target_title*.
+
+    Returns
+    -------
+    Tuple[bool, Optional[str]]
+        A tuple ``(success, page_id)`` where ``success`` is ``True`` if the page was duplicated
+        successfully, and ``page_id`` is the ID of the duplicated page (``None`` if unsuccessful).
+    """
 
     token = os.getenv("NOTION_API_KEY") or os.getenv("NOTION_TOKEN")
     if not token:
@@ -188,6 +208,8 @@ def duplicate_child_page(
 
     log(f"Source page found: {src_page_url} (ID: {src_page_id})")
 
+    duplicated_page_id: Optional[str] = None  # Initialize for scope safety
+
     with sync_playwright() as p:
         browser: Browser = p.chromium.launch(headless=headless)
         state_file = Path("notion_state.json")
@@ -203,7 +225,10 @@ def duplicate_child_page(
 
         context.storage_state(path=str(state_file))
 
-        duplicate_current_page(page, target_title)
+        duplicated_page_id = duplicate_current_page(page, target_title)
 
         log("Workflow complete – browser may be closed.")
-        context.storage_state(path=str(state_file)) 
+        context.storage_state(path=str(state_file))
+
+    success = duplicated_page_id is not None
+    return success, duplicated_page_id 
