@@ -23,17 +23,25 @@ from tasks.utils.page_duplication import duplicate_current_page, log
 class PageDuplicationManager:
     """Manages page duplication lifecycle for evaluation tasks."""
     
-    def __init__(self, notion_key: str, config: Dict[str, Any], headless: bool = True):
+    def __init__(self, notion_key: str, config: Optional[Dict[str, Any]] = None, headless: bool = True):
         """Initialize the page duplication manager.
         
         Args:
             notion_key: Notion API key
-            config: Configuration containing source page URLs
+            config: Optional configuration containing source page URLs. Expected structure::
+
+                {
+                    "source_pages": {
+                        "category_name": "https://notion.so/page-url",
+                        ...
+                    }
+                }
             headless: Whether to run browser in headless mode
         """
         self.notion_key = notion_key
         self.notion_client = Client(auth=notion_key)
-        self.config = config
+        # Allow the manager to be instantiated without a config so that callers can set it later.
+        self.config = config or {}
         self.headless = headless
         self.state_file = Path("notion_state.json")
     
@@ -104,6 +112,15 @@ class PageDuplicationManager:
             page = context.new_page()
             
             try:
+                # ----------------------------------------------------------------------
+                # Ensure the Playwright helper sees the correct NOTION_API_KEY. The helper
+                # `tasks.utils.page_duplication._rename_page_via_api()` looks up the token
+                # using ``os.getenv`` at call-time, so we set the env var here (overriding
+                # any stale/invalid token) to guarantee renaming succeeds.
+                # ----------------------------------------------------------------------
+                if self.notion_key:
+                    os.environ["NOTION_API_KEY"] = self.notion_key  # type: ignore[arg-type]
+
                 log(f"Navigating to source page for {category}...")
                 page.goto(source_url, wait_until="load")
                 
@@ -120,19 +137,30 @@ class PageDuplicationManager:
                 # Save authentication state
                 context.storage_state(path=str(self.state_file))
                 
-                # Store original URL before duplication
-                original_url = page.url
-                
-                # Duplicate the page with a specific title
+                # Duplicate the page with a specific title. The updated duplicate_current_page
+                # now returns the ID of the newly created page, allowing us to avoid manually
+                # parsing the URL.
                 duplicate_title = f"[EVAL] {task_name} - Copy"
-                duplicate_current_page(page, duplicate_title)
-                
-                # Wait for URL to change and get the new URL
-                page.wait_for_url(lambda url: url != original_url, timeout=60_000)
+                duplicated_page_id = duplicate_current_page(page, duplicate_title)
+
+                # ------------------------------------------------------------------
+                # Fallback: if duplication helper could not extract the page ID (e.g.,
+                # navigation slower than expected), try to parse the *current* URL
+                # manually before treating this as a hard failure.
+                # ------------------------------------------------------------------
+                if not duplicated_page_id:
+                    try:
+                        duplicated_page_id = self.extract_page_id_from_url(page.url)
+                        log(f"ℹ️  Fallback succeeded – extracted page ID from URL: {duplicated_page_id}")
+                    except Exception:
+                        duplicated_page_id = None
+
+                # If the duplication helper did not return a page ID, treat as failure.
+                if not duplicated_page_id:
+                    raise RuntimeError("duplicate_current_page did not return a page ID – duplication failed")
+
+                # The page object should already be on the duplicated page at this point.
                 duplicated_url = page.url
-                
-                # Extract page ID from the duplicated URL
-                duplicated_page_id = self.extract_page_id_from_url(duplicated_url)
                 
                 log(f"✅ Page duplicated successfully: {duplicated_page_id}")
                 

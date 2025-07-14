@@ -17,14 +17,25 @@ from dataclasses import dataclass, asdict
 
 @dataclass
 class TaskResult:
-    """Represents the result of a single task evaluation."""
-    category: str
-    task_id: int
+    """Represents the result of a single task evaluation.
+
+    The fields *category* and *task_id* are optional to allow older call sites
+    (e.g. legacy or in-progress refactors) that may not yet supply them. When
+    omitted, they will default to ``None`` which is handled gracefully by the
+    reporting utilities.
+    """
+
     task_name: str
     success: bool
     execution_time: float  # in seconds
+
+    # Optional/extended metadata ------------------------------------------------
+    category: Optional[str] = None
+    task_id: Optional[int] = None
     error_message: Optional[str] = None
     logs_path: Optional[str] = None
+    model_output: Optional[str] = None  # Raw assistant output (if captured)
+    page_id: Optional[str] = None       # ID of the duplicated Notion page (if any)
     
     @property
     def status(self) -> str:

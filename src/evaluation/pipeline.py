@@ -25,13 +25,18 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor
+from dotenv import load_dotenv
+
+# Load environment variables from a .env file if present.
+# Existing environment variables take precedence over those in the .env file.
+load_dotenv(override=False)
 
 # Import our custom modules
 sys.path.append(str(Path(__file__).parent.parent))
 from core.task_manager import TaskManager, Task
 from core.results_reporter import ResultsReporter, EvaluationReport, TaskResult
 from utils.mcp_utils import get_notion_key, create_model_provider, create_mcp_server
-from core.notion_task_runner import run_single_task, read_task_file
+from core.notion_task_runner import run_single_task_file as run_single_task, read_task_file
 from core.page_duplication_manager import PageDuplicationManager
 from core.task_template_manager import TaskTemplateManager
 
@@ -78,9 +83,11 @@ class EvaluationPipeline:
         # Initialize managers
         self.task_manager = TaskManager()
         self.results_reporter = ResultsReporter()
-        
+        # These managers are only needed when page duplication is enabled. We lazily
+        # instantiate the PageDuplicationManager later once we have the *source_pages*
+        # information (passed to run_evaluation).
+        self.page_duplication_manager = None
         if self.duplicate_pages:
-            self.page_duplication_manager = PageDuplicationManager(notion_key)
             self.task_template_manager = TaskTemplateManager()
         
         # Load additional config if provided
@@ -131,19 +138,20 @@ class EvaluationPipeline:
             # Handle page duplication if enabled
             if self.duplicate_pages:
                 category = task.name.split('/')[0]
-                source_url = source_pages.get(category)
-                
-                if not source_url:
+
+                # Duplicate the page for this task/category.
+                print(f"🔄 Duplicating page for task: {task.name}")
+                try:
+                    duplicated_url, page_id = self.page_duplication_manager.duplicate_page_for_task(
+                        category, task.name
+                    )
+                except Exception as dup_exc:
                     return TaskResult(
                         task_name=task.name,
                         success=False,
-                        execution_time=0,
-                        error_message=f"No source page URL provided for category: {category}"
+                        execution_time=time.time() - start_time,
+                        error_message=f"Failed to duplicate page: {dup_exc}"
                     )
-                
-                # Duplicate the page
-                print(f"🔄 Duplicating page for task: {task.name}")
-                page_id = self.page_duplication_manager.duplicate_page(source_url)
                 
                 if not page_id:
                     return TaskResult(
@@ -175,12 +183,13 @@ class EvaluationPipeline:
                     )
                     
                     # Run verification if available
+                    verify_result = None  # Ensure the variable is defined for later error handling
                     if task.verify_script:
                         print(f"🔍 Running verification for task: {task.name}")
                         verify_result = subprocess.run([
                             sys.executable, str(task.verify_script), page_id
                         ], capture_output=True, text=True, timeout=60)
-                        
+
                         success = verify_result.returncode == 0
                         if not success:
                             print(f"❌ Verification failed: {verify_result.stderr}")
@@ -197,7 +206,7 @@ class EvaluationPipeline:
                         task_name=task.name,
                         success=success,
                         execution_time=execution_time,
-                        error_message=verify_result.stderr if not success else None,
+                        error_message=(verify_result.stderr if verify_result is not None else None) if not success else None,
                         model_output=result.get('output', ''),
                         page_id=page_id
                     )
@@ -205,28 +214,6 @@ class EvaluationPipeline:
                 finally:
                     # Clean up temp file
                     os.unlink(temp_task_path)
-                    
-            else:
-                # Execute without page duplication
-                result = run_single_task(
-                    str(task.description_file),
-                    self.model_name,
-                    self.api_key,
-                    self.base_url,
-                    self.notion_key,
-                    timeout=self.timeout
-                )
-                
-                execution_time = time.time() - start_time
-                success = result.get('success', False)
-                
-                return TaskResult(
-                    task_name=task.name,
-                    success=success,
-                    execution_time=execution_time,
-                    error_message=result.get('error', None),
-                    model_output=result.get('output', '')
-                )
                 
         except Exception as e:
             execution_time = time.time() - start_time
@@ -264,7 +251,7 @@ class EvaluationPipeline:
         print(f"Max workers: {self.max_workers}")
         
         # Discover tasks
-        tasks = self.task_manager.get_tasks(task_filter)
+        tasks = self.task_manager.filter_tasks(task_filter)
         if not tasks:
             print(f"❌ No tasks found matching filter: {task_filter}")
             sys.exit(1)
@@ -276,6 +263,12 @@ class EvaluationPipeline:
         results = []
         
         if self.duplicate_pages:
+            # Lazy creation of the duplication manager now that we have *source_pages*.
+            if self.page_duplication_manager is None:
+                self.page_duplication_manager = PageDuplicationManager(
+                    self.notion_key,
+                    {"source_pages": source_pages},
+                )
             # Run sequentially when page duplication is enabled
             print("🔄 Running tasks sequentially (page duplication enabled)")
             for task in tasks:
@@ -311,10 +304,10 @@ class EvaluationPipeline:
         # Generate report
         report = EvaluationReport(
             model_name=self.model_name,
-            timestamp=datetime.now(),
+            start_time=start_time,
+            end_time=datetime.now(),
             total_tasks=len(tasks),
             passed_tasks=sum(1 for r in results if r.success),
-            total_time=total_time,
             task_results=results,
             duplicate_pages=self.duplicate_pages
         )
@@ -326,18 +319,6 @@ class EvaluationPipeline:
         print(f"Total time: {report.total_time:.1f}s")
         
         return report
-
-
-def load_env_file():
-    """Load environment variables from .env file if it exists."""
-    env_file = Path('.env')
-    if env_file.exists():
-        with open(env_file) as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith('#') and '=' in line:
-                    key, value = line.split('=', 1)
-                    os.environ[key.strip()] = value.strip()
 
 
 def main():
@@ -359,7 +340,7 @@ Examples:
     )
     
     # Model configuration
-    parser.add_argument('--model-name', required=True, help='Name of the model to evaluate')
+    parser.add_argument('--model-name', help='Name of the model to evaluate')
     parser.add_argument('--api-key', help='API key for the model provider')
     parser.add_argument('--base-url', help='Base URL for the model provider')
     parser.add_argument('--notion-key', help='Notion API key')
@@ -381,14 +362,15 @@ Examples:
     
     args = parser.parse_args()
     
-    # Load environment variables
-    load_env_file()
-    
-    # Get configuration from args or environment
+    # Resolve configuration from CLI args or environment variables
+    model_name = args.model_name or os.getenv('MCPBENCH_MODEL_NAME')
     api_key = args.api_key or os.getenv('MCPBENCH_API_KEY')
     base_url = args.base_url or os.getenv('MCPBENCH_BASE_URL')
     notion_key = args.notion_key or get_notion_key()
-    
+
+    if not model_name:
+        print("Error: Model name not provided. Use --model-name or set MCPBENCH_MODEL_NAME environment variable.")
+        sys.exit(1)
     if not api_key:
         print("Error: API key not provided. Use --api-key or set MCPBENCH_API_KEY environment variable.")
         sys.exit(1)
@@ -399,7 +381,7 @@ Examples:
         print("Error: Notion API key not provided. Use --notion-key or set NOTION_API_KEY environment variable.")
         sys.exit(1)
     
-    # Parse source pages if provided
+    # Parse source pages if provided via CLI first
     source_pages = {}
     if args.source_pages:
         try:
@@ -407,15 +389,24 @@ Examples:
         except json.JSONDecodeError as e:
             print(f"Error: Invalid JSON in --source-pages: {e}")
             sys.exit(1)
-    
+
+    # Fallback: if --source-pages not provided, attempt to load from the config file (if given)
+    if not source_pages and args.config and args.config.exists():
+        try:
+            with open(args.config, 'r') as cfg_file:
+                cfg = json.load(cfg_file)
+                source_pages = cfg.get('source_pages', {})
+        except Exception as e:
+            print(f"Warning: Could not load source_pages from config file {args.config}: {e}")
+
     # Validate page duplication requirements
     if args.duplicate_pages and not source_pages:
-        print("Error: --source-pages must be provided when --duplicate-pages is enabled")
+        print("Error: --source-pages must be provided when --duplicate-pages is enabled (either via CLI or in the config file)")
         sys.exit(1)
     
     # Initialize and run pipeline
     pipeline = EvaluationPipeline(
-        model_name=args.model_name,
+        model_name=model_name,
         api_key=api_key,
         base_url=base_url,
         notion_key=notion_key,

@@ -96,6 +96,104 @@ async def run_single_task(agent: Agent, task_content: str, custom_model_provider
 
 
 # ---------------------------------------------------------------------------
+# Compatibility wrapper for the new evaluation pipeline
+# ---------------------------------------------------------------------------
+
+def run_single_task_file(
+    task_file_path: str,
+    model_name: str,
+    api_key: str,
+    base_url: str,
+    notion_key: str,
+    timeout: int = 300,
+) -> dict:
+    """Execute *task_file_path* with the Notion Agent synchronously.
+
+    This is a convenience wrapper around :pyfunc:`run_single_task` that is
+    compatible with the signature expected by the *new* unified evaluation
+    pipeline located in ``src/evaluation/pipeline.py``.  It hides the
+    asynchronous boilerplate for spinning up the MCP server and running the
+    agent, returning a *dict* with ``success``, ``output`` and ``error`` keys
+    similar to what the pipeline expects.
+
+    Parameters
+    ----------
+    task_file_path : str
+        Path to the Markdown task description file.
+    model_name : str
+        The name of the model to use for the evaluation (e.g. ``gpt-4o``).
+    api_key : str
+        API key for the model provider.
+    base_url : str
+        Base URL for the model provider.
+    notion_key : str
+        Notion integration token used by the MCP server.
+    timeout : int, optional
+        Maximum time (in seconds) to allow the model to run before aborting.
+
+    Returns
+    -------
+    dict
+        A mapping with the following keys:
+
+        ``success``
+            ``True`` when the task ran without raising, ``False`` otherwise.
+        ``output``
+            Raw assistant response as a *str* (may be empty on error).
+        ``error``
+            Error message when ``success`` is ``False``.
+    """
+
+    task_path = Path(task_file_path)
+
+    try:
+        # -------------------------------------------------------------------
+        # Prepare model provider & MCP server (async context)                 
+        # -------------------------------------------------------------------
+        custom_model_provider = create_model_provider(
+            base_url=base_url,
+            api_key=api_key,
+            model_name=model_name,
+        )
+
+        async def _run() -> str:
+            """Internal coroutine that performs the actual evaluation."""
+            async with await create_mcp_server(notion_key) as server:
+                agent = Agent(name="Notion Agent", mcp_servers=[server])
+                ModelSettings.tool_choice = "required"
+
+                task_content = read_task_file(task_path)
+
+                # Delegate to the original *async* implementation to stream
+                # the response.
+                return await run_single_task(agent, task_content, custom_model_provider)
+
+        # -------------------------------------------------------------------
+        # Execute with timeout handling                                       
+        # -------------------------------------------------------------------
+        assistant_response: str = asyncio.run(asyncio.wait_for(_run(), timeout=timeout))
+
+        return {
+            "success": True,
+            "output": assistant_response,
+            "error": None,
+        }
+
+    except asyncio.TimeoutError:
+        return {
+            "success": False,
+            "output": "",
+            "error": f"Task timed out after {timeout} seconds",
+        }
+    except Exception as exc:
+        return {
+            "success": False,
+            "output": "",
+            "error": str(exc),
+        }
+
+
+# ---------------------------------------------------------------------------
 # Main entry-point
 # ---------------------------------------------------------------------------
 

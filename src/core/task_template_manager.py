@@ -171,6 +171,27 @@ class TaskTemplateManager:
         
         return description
 
+    # ---------------------------------------------------------------------
+    # Compatibility helpers
+    # ---------------------------------------------------------------------
+
+    def replace_page_search_with_id(self, description: str, page_id: str) -> str:
+        """Replace legacy page-search instructions with a concrete page ID.
+
+        The evaluation pipeline may pass in arbitrary task descriptions that either already
+        use the ``{{PAGE_ID}}`` placeholder *or* contain human-readable instructions like
+        "Find page named \"XYZ\"". This convenience wrapper handles both cases by either
+        injecting the page ID into the template placeholder or converting the legacy text
+        into an instruction that references the explicit ``page_id``.
+        """
+
+        # Case 1 – description is templated using the placeholder
+        if self.has_page_id_placeholder(description):
+            return self.inject_page_id(description, page_id)
+
+        # Case 2 – legacy description that references page by name
+        return self.convert_legacy_description(description, page_id)
+
 
 def main():
     """Example usage of TaskTemplateManager."""

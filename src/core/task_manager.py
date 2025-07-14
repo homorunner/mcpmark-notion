@@ -32,6 +32,25 @@ class Task:
             return self.description_path.read_text(encoding="utf-8")
         return ""
 
+    # ------------------------------------------------------------------
+    # Backwards-compatibility helpers (legacy pipeline expects these attrs)
+    # ------------------------------------------------------------------
+
+    @property
+    def description(self) -> str:  # noqa: D401 – kept for compatibility
+        """Alias for :py:meth:`get_description` (legacy attribute)."""
+        return self.get_description()
+
+    @property
+    def verify_script(self) -> Path:  # noqa: D401 – kept for compatibility
+        """Alias for :py:attr:`verify_path` (legacy attribute)."""
+        return self.verify_path
+
+    @property
+    def description_file(self) -> Path:  # noqa: D401 – legacy alias
+        """Alias for :py:attr:`description_path` expected by some scripts."""
+        return self.description_path
+
 
 class TaskManager:
     """Manages task discovery and filtering for MCPBench evaluation."""
@@ -39,7 +58,7 @@ class TaskManager:
     def __init__(self, tasks_root: Path = None):
         """Initialize with the tasks directory path."""
         if tasks_root is None:
-            tasks_root = Path(__file__).parent / "tasks"
+            tasks_root = Path(__file__).resolve().parents[2] / "tasks"
         self.tasks_root = Path(tasks_root)
         self._tasks_cache = None
     
