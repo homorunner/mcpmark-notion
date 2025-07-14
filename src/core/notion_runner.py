@@ -9,8 +9,12 @@ agent with configurable models and environments.
 
 import asyncio
 import os
+import sys
+import time
+import tempfile
+import subprocess
 from pathlib import Path
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, TYPE_CHECKING
 from dotenv import load_dotenv
 
 from agents import Agent, Runner, ModelSettings, ModelProvider, RunConfig, Model
@@ -18,6 +22,13 @@ from openai.types.responses import ResponseTextDeltaEvent
 from openai import AsyncOpenAI
 from agents.mcp.server import MCPServerStdio
 from agents import OpenAIChatCompletionsModel
+
+# Avoid circular imports
+if TYPE_CHECKING:
+    from .template_manager import TemplateManager
+    
+from .task_manager import Task
+from .results_reporter import TaskResult
 
 
 class NotionRunner:
@@ -194,6 +205,89 @@ class NotionRunner:
                 "output": "",
                 "error": str(exc),
             }
+    
+    def execute_task(self, task: Task, template_manager: Optional['TemplateManager'] = None) -> TaskResult:
+        """Execute a complete task including verification and cleanup.
+        
+        Args:
+            task: Task object containing task details
+            template_manager: Optional TemplateManager for cleanup operations
+            
+        Returns:
+            TaskResult object with execution results
+        """
+        print(f"\n🔄 Executing task: {task.name}")
+        start_time = time.time()
+        
+        # Check if duplication succeeded
+        if task.duplicated_template_id is None:
+            execution_time = time.time() - start_time
+            return TaskResult(
+                task_name=task.name,
+                success=False,
+                execution_time=execution_time,
+                error_message="Duplication failed",
+                category=task.category,
+                task_id=task.task_id
+            )
+        
+        try:
+            # Prepare task description with template ID
+            template_id = str(task.duplicated_template_id)
+            task_description = task.get_description() + f"\n\nNote: The ID of the working page/database is `{template_id}`. Check the title and properties of this block; this should be the first step."
+            
+            # Create temporary task file
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+                f.write(task_description)
+                temp_task_path = f.name
+            
+            try:
+                # Run the task
+                result = self.run_single_task_file(temp_task_path, timeout=300)
+                
+                # Run verification
+                verify_result = subprocess.run(
+                    [sys.executable, str(task.verify_path), task.duplicated_template_id],
+                    capture_output=True,
+                    text=True,
+                    timeout=60
+                )
+                
+                # Process results
+                success = verify_result.returncode == 0
+                error_message = verify_result.stderr if not success and verify_result.stderr else None
+                execution_time = time.time() - start_time
+                
+                # Clean up the duplicated template if template_manager provided
+                if template_manager and task.duplicated_template_id:
+                    template_manager.delete_template(task.duplicated_template_id)
+                
+                return TaskResult(
+                    task_name=task.name,
+                    success=success,
+                    execution_time=execution_time,
+                    error_message=error_message,
+                    model_output=result.get('output', ''),
+                    category=task.category,
+                    task_id=task.task_id
+                )
+                
+            finally:
+                # Clean up temp file
+                os.unlink(temp_task_path)
+                
+        except Exception as e:
+            execution_time = time.time() - start_time
+            error_msg = f"Task execution failed: {str(e)}"
+            
+            return TaskResult(
+                task_name=task.name,
+                success=False,
+                execution_time=execution_time,
+                error_message=error_msg,
+                category=task.category,
+                task_id=task.task_id
+            )
 
 
 def main():

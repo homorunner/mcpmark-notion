@@ -8,12 +8,8 @@ with optional page duplication support for consistent evaluation.
 """
 
 import argparse
-import asyncio
 import sys
 import time
-import tempfile
-import subprocess
-import json
 import os
 from datetime import datetime
 from pathlib import Path
@@ -50,74 +46,6 @@ class EvaluationPipeline:
         self.notion_runner = NotionRunner(model_name, api_key, base_url, notion_key)
         
     
-    def execute_single_task(self, task: Task) -> TaskResult:
-        print(f"\n🔄 Executing task: {task.name}")
-        start_time = time.time()
-        if task.duplicated_template_id == None:
-            execution_time = time.time() - start_time
-            
-            return TaskResult(
-                task_name=task.name,
-                success=False,
-                execution_time=execution_time,
-                error_message="Duplication failed",
-                category=task.category,
-                task_id=task.task_id
-            )
-        
-        try:
-            template_id = str(task.duplicated_template_id)
-            task_description = task.get_description() + f"\n\nNote: The ID of the working page/database is `{template_id}`. Check the title and properties of this block; this should be the first step."
-            
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
-                f.write(task_description)
-                temp_task_path = f.name
-            
-            try:
-                result = self.notion_runner.run_single_task_file(
-                    temp_task_path,
-                    timeout=self.timeout
-                )
-                
-                verify_result = subprocess.run([
-                    sys.executable, str(task.verify_path), task.duplicated_template_id
-                ], capture_output=True, text=True, timeout=60)
-
-                # Logs
-                success = verify_result.returncode == 0
-                error_message = (verify_result.stderr if verify_result is not None else None) if not success else None
-                execution_time = time.time() - start_time
-            
-                # Clean up the duplicated template
-                self.template_manager.delete_template(task.duplicated_template_id)
-                
-                return TaskResult(
-                    task_name=task.name,
-                    success=success,
-                    execution_time=execution_time,
-                    error_message=error_message,
-                    model_output=result.get('output', ''),
-                    category=task.category,
-                    task_id=task.task_id
-                )
-                
-            finally:
-                # Clean up temp file
-                os.unlink(temp_task_path)
-                
-        except Exception as e:
-            execution_time = time.time() - start_time
-            error_msg = f"Task execution failed: {str(e)}"
-            
-            return TaskResult(
-                task_name=task.name,
-                success=False,
-                execution_time=execution_time,
-                error_message=error_msg,
-                category=task.category,
-                task_id=task.task_id
-            )
-    
     def run_evaluation(self, task_filter: str) -> EvaluationReport:
         tasks = self.task_manager.filter_tasks(task_filter)
         
@@ -127,7 +55,7 @@ class EvaluationPipeline:
         start_time = time.time()
         results = []
         for task in tasks:
-            result = self.execute_single_task(task)
+            result = self.notion_runner.execute_task(task, self.template_manager)
             results.append(result)
 
         end_time = time.time()
