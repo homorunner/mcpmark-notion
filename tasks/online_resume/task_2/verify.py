@@ -13,9 +13,9 @@ def verify(notion: Client, main_id: str = None) -> bool:
             page_id = found_id
     
     if not page_id:
-        page_id = notion_utils.find_page(notion, "Maya Zhang")
+        page_id = notion_utils.find_page(notion, "Online Resume")
     if not page_id:
-        print("Error: Page 'Maya Zhang' not found.", file=sys.stderr)
+        print("Error: Page 'Online Resume' not found.", file=sys.stderr)
         return False
 
     all_blocks = notion_utils.get_all_blocks_recursively(notion, page_id)
