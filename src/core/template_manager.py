@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 class TemplateManager:
     """Manages duplication of Notion templates using Playwright."""
     
-    def __init__(self, notion_key: str, headless: bool = True, browser: str = "firefox"):
+    def __init__(self, notion_key: str, model_name: str, headless: bool = True, browser: str = "firefox"):
         """Initialize a new ``TemplateManager`` instance.
 
         Args:
@@ -47,6 +47,7 @@ class TemplateManager:
         self.notion_client = Client(auth=notion_key)
         self.headless = headless
         self.state_file = Path("notion_state.json")
+        self.model_name = model_name
         
     def _category_to_template_title(self, category: str) -> str:
         """Convert task category to template title format.
@@ -209,7 +210,7 @@ class TemplateManager:
                     # Save authentication state
                     context.storage_state(path=str(self.state_file))
 
-                    duplicate_title = f"[EVAL] {task_name} - Copy"
+                    duplicate_title = f"[EVAL IN PROGRESS - {self.model_name.upper()}] {task_name}"
 
                     # Attempt duplication with adaptive timeout
                     duplicated_id = duplicate_current_page(page, duplicate_title, wait_timeout=wait_timeout)

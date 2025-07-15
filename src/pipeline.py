@@ -44,7 +44,7 @@ class EvaluationPipeline:
         # Initialize managers
         self.task_manager = TaskManager()
         self.results_reporter = ResultsReporter()
-        self.template_manager = TemplateManager(notion_key, browser=browser)
+        self.template_manager = TemplateManager(notion_key, model_name, browser=browser)
         self.notion_runner = NotionRunner(model_name, api_key, base_url, notion_key)
         
     
@@ -52,11 +52,11 @@ class EvaluationPipeline:
         tasks = self.task_manager.filter_tasks(task_filter)
         
         # Process templates and update task objects with template info
-        self.template_manager.process_task_templates(tasks)
     
         start_time = time.time()
         results = []
         for task in tasks:
+            self.template_manager.process_task_templates([task])
             result = self.notion_runner.execute_task(task, self.template_manager)
             results.append(result)
 
