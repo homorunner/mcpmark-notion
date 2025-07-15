@@ -16,7 +16,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 sys.path.append(str(Path(__file__).parent.parent))
-from core.task_manager import TaskManager, Task
+from core.task_manager import TaskManager
 from core.results_reporter import ResultsReporter, EvaluationReport, TaskResult
 from core.notion_runner import NotionRunner
 from core.template_manager import TemplateManager
@@ -54,8 +54,32 @@ class EvaluationPipeline:
         start_time = time.time()
         results = []
         for task in tasks:
-            # Process templates and update task objects with template info
-            self.template_manager.process_task_templates([task])
+            # ---------------------------------------------
+            # 1) Duplicate the template for *this* task
+            # ---------------------------------------------
+            dup_start = time.time()
+            duplication_success = self.template_manager.process_task_templates(task)
+
+            # ----------------------------------------------------
+            # 2) If duplication failed, short-circuit and record it
+            # ----------------------------------------------------
+            if not duplication_success:
+                execution_time = time.time() - dup_start
+                results.append(
+                    TaskResult(
+                        task_name=task.name,
+                        success=False,
+                        execution_time=execution_time,
+                        error_message="Duplication Error",
+                        category=task.category,
+                        task_id=task.task_id,
+                    )
+                )
+                continue  # Skip this task – nothing to execute
+
+            # ---------------------------------------------------
+            # 3) Run the task through the NotionRunner as before
+            # ---------------------------------------------------
             result = self.notion_runner.execute_task(task, self.template_manager)
             results.append(result)
 

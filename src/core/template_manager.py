@@ -10,7 +10,7 @@ consistent task evaluation using Playwright automation.
 import os
 import sys
 from pathlib import Path
-from typing import Dict, Tuple, Optional, List
+from typing import Dict, Tuple, Optional
 from notion_client import Client
 from core.task_manager import Task
 from playwright.sync_api import sync_playwright, Browser, Page as PlaywrightPage
@@ -275,53 +275,66 @@ class TemplateManager:
                 log(f"❌ Failed to archive template {template_id}: {e}")
                 return False
     
-    def process_task_templates(self, tasks: List[Task]) -> None:
-        """Process templates for a list of tasks.
-        
-        Updates each task object with template information:
-        - original_template_url
-        - duplicated_template_url
-        - duplicated_template_id
-        
-        Args:
-            tasks: List of Task objects to process
-        """
-        
-        # Step 1: Group tasks by category
-        categories = {}
-        for task in tasks:
-            if task.category not in categories:
-                categories[task.category] = []
-            categories[task.category].append(task)
-        
-        # Step 2: Duplicate template for each task
-        for category, category_tasks in categories.items():
-            # Obtain meta info of template
-            template_title = self._category_to_template_title(category)
-            template_info = self.find_template_by_title(template_title)
+    def process_task_templates(self, task: Task) -> bool:
+        """Duplicate and attach a Notion template for *one* task.
 
-            if not template_info:
-                logger.warning(f"Template not found for category '{category}' (title: '{template_title}')")
-                for task in category_tasks:
-                    task.original_template_url = None
-                    task.duplicated_template_url = None
-                    task.duplicated_template_id = None
-                continue
-            
-            _, template_url = template_info
-            
-            # Duplicate
-            for task in category_tasks:
-                try:
-                    duplicated_url, duplicated_id = self.duplicate_template_for_task(
-                        template_url, category, task.name
-                    )
-                    
-                    task.original_template_url = template_url
-                    task.duplicated_template_url = duplicated_url
-                    task.duplicated_template_id = duplicated_id
-                except Exception as e:
-                    logger.error(f"Failed to duplicate template for {task.name}: {e}")
-                    task.original_template_url = template_url
-                    task.duplicated_template_url = None
-                    task.duplicated_template_id = None
+        This helper **mutates** the provided ``task`` object, setting
+        ``original_template_url``, ``duplicated_template_url`` and
+        ``duplicated_template_id`` in-place.
+
+        It consolidates the former bulk logic (which operated on a list of
+        tasks) into a *single-task* workflow because the caller now invokes
+        this method inside a per-task loop.
+
+        Args:
+            task: The task to prepare a template for.
+
+        Returns:
+            ``True`` when the template was duplicated successfully, ``False``
+            otherwise (e.g. template not found or duplication failed after all
+            retries).
+        """
+
+        category = task.category
+
+        # ------------------------------------------------------------------
+        # Locate the *source* template for this category
+        # ------------------------------------------------------------------
+        template_title = self._category_to_template_title(category)
+        template_info = self.find_template_by_title(template_title)
+
+        if not template_info:
+            logger.warning(
+                f"Template not found for category '{category}' (title: '{template_title}')"
+            )
+            task.original_template_url = None
+            task.duplicated_template_url = None
+            task.duplicated_template_id = None
+            return False
+
+        _, template_url = template_info
+
+        # ------------------------------------------------------------------
+        # Attempt duplication (with built-in retry handled by the helper)
+        # ------------------------------------------------------------------
+        try:
+            duplicated_url, duplicated_id = self.duplicate_template_for_task(
+                template_url, category, task.name
+            )
+
+            task.original_template_url = template_url
+            task.duplicated_template_url = duplicated_url
+            task.duplicated_template_id = duplicated_id
+
+            return True  # Success ✅
+
+        except Exception as e:
+            # duplicate_template_for_task already performed retries – treat any
+            # raised exception as a definitive failure.
+            logger.error(f"Failed to duplicate template for {task.name}: {e}")
+
+            task.original_template_url = template_url
+            task.duplicated_template_url = None
+            task.duplicated_template_id = None
+
+            return False  # Failure ❌
