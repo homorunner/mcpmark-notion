@@ -35,6 +35,12 @@ export MCPBENCH_MODEL_NAME="your_model_name"   # e.g. gpt-4o
 export OPENAI_API_KEY="your_openai_key"
 ```
 
+For running task verification scripts directly (e.g., `python tasks/habit_tracker/task_1/verify.py`) or the test suite, make sure the repository root is on your Python module search path:
+
+```bash
+export PYTHONPATH="$(pwd):${PYTHONPATH}"
+```
+
 ---
 
 ## 3 · Installation
