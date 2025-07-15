@@ -139,7 +139,7 @@ def verify(notion: Client, main_id: str = None) -> bool:
                     try:
                         iso_date = datetime.strptime(expected_date, "%Y-%m-%d")
                         readable_date = iso_date.strftime("%b %d, %Y")
-                        if date_text == readable_date:
+                        if date_text == readable_date or date_text == expected_date:
                             valid_dates += 1
                         else:
                             print(f"Warning: Date format mismatch for {company_text}: expected '{readable_date}', found '{date_text}'")

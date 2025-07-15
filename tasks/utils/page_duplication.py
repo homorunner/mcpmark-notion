@@ -28,7 +28,7 @@ from playwright.sync_api import (
 # ---------------------------------------------------------------------------
 # Configurable selectors (update here if Notion UI changes)
 # ---------------------------------------------------------------------------
-PAGE_MENU_BUTTON_SELECTOR: Final[str] = "div.notion-topbar-more-button"
+PAGE_MENU_BUTTON_SELECTOR: Final[str] = '[data-testid="more-button"], div.notion-topbar-more-button, [aria-label="More"], button[aria-label="More"]'
 DUPLICATE_MENU_ITEM_SELECTOR: Final[str] = 'text="Duplicate"'
 
 
@@ -102,6 +102,7 @@ def _find_child_page_id_recursive(notion_client, block_id: str, title: str) -> O
 
         for blk in resp.get("results", []):
             blk_type = blk.get("type")
+            print(blk_type)
             if blk_type == "child_page" and blk.get("child_page", {}).get("title") == title:
                 return blk["id"]
 
@@ -139,8 +140,33 @@ def duplicate_current_page(page: Page, new_title: str | None = None, *, wait_tim
     """
     try:
         log("Opening page menu…")
-        page.wait_for_selector(PAGE_MENU_BUTTON_SELECTOR, state="visible", timeout=20_000)
-        page.click(PAGE_MENU_BUTTON_SELECTOR)
+        # Wait for page to be fully loaded
+        page.wait_for_load_state("networkidle", timeout=30_000)
+        
+        # Try multiple selector strategies
+        menu_button = None
+        selectors_to_try = [
+            '[data-testid="more-button"]',
+            'div.notion-topbar-more-button', 
+            '[aria-label="More"]',
+            'button[aria-label="More"]',
+            '[role="button"]:has-text("More")',
+            'button:has-text("⋯")',
+            'div[role="button"]:has-text("⋯")'
+        ]
+        
+        for selector in selectors_to_try:
+            try:
+                page.wait_for_selector(selector, state="visible", timeout=5_000)
+                menu_button = selector
+                break
+            except PlaywrightTimeoutError:
+                continue
+        
+        if not menu_button:
+            raise PlaywrightTimeoutError("Could not find page menu button")
+            
+        page.click(menu_button)
 
         log("Clicking Duplicate…")
         page.wait_for_selector(DUPLICATE_MENU_ITEM_SELECTOR, timeout=15_000)
@@ -254,4 +280,4 @@ def duplicate_child_page(
         context.storage_state(path=str(state_file))
 
     success = duplicated_page_id is not None
-    return success, duplicated_page_id 
+    return success, duplicated_page_id

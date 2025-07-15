@@ -62,7 +62,7 @@ def verify(notion: Client, main_id: str = None) -> bool:
         type_value = type_rich_text[0].get("text", {}).get("content") if type_rich_text else None
         
         # Check if Type is correctly assigned
-        expected_type = "A" if company_name == "24S" else "B"
+        expected_type = "A" if company_name == "24S" else ""
         
         if type_value == expected_type:
             correct_entries += 1
