@@ -76,7 +76,6 @@ python src/pipeline.py --tasks online_resume/task_1 --model-name $MCPBENCH_MODEL
 ```
 
 Results are written to `./results/` (JSON + CSV).  
-Open the generated CSV in any spreadsheet tool for a quick overview.
 
 ---
 
