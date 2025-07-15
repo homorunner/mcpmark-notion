@@ -1,73 +1,121 @@
 # MCPBench
 
-A comprehensive evaluation framework for testing AI models' capabilities with the Notion API through Model Context Protocol (MCP).
+MCPBench is a comprehensive evaluation suite for testing AI models’ ability to operate a Notion workspace through the **Model Context Protocol (MCP)**.  
+It ships with **20 real-world tasks** (e.g., habit tracker, online résumé builder) that can be run against **your own MCP server and your own Notion pages**.
 
-## Quick Start
+---
 
-1. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
+## 1 · Set-up Your Notion Workspace
 
-2. **Set environment variables:**
-   ```bash
-   export NOTION_API_KEY="your_notion_key"
-   export MCPBENCH_API_KEY="your_model_api_key"
-   export MCPBENCH_BASE_URL="your_model_base_url"
-   export MCPBENCH_MODEL_NAME="your_model_name"
-   ```
+1. **Duplicate the MCPBench Source Pages**  
+   Copy the template database and pages into your workspace from the public template:  
+   [Duplicate MCPBench Source](https://early-rest-d97.notion.site/MCPBench-Source-22c0b91d1c3f80bb8c28d142062abe50?source=copy_link).
 
-3. **Run evaluation:**
-   ```bash
-   # Evaluate all tasks
-   python src/evaluation/pipeline.py --model-name gpt-4o --api-key $MCPBENCH_API_KEY --base-url $MCPBENCH_BASE_URL --notion-key $NOTION_API_KEY --tasks all
-   
-   # Evaluate specific category
-   python src/evaluation/pipeline.py --model-name gpt-4o --api-key $MCPBENCH_API_KEY --base-url $MCPBENCH_BASE_URL --notion-key $NOTION_API_KEY --tasks online_resume
-   
-   # Run with page duplication for consistent testing
-   python src/evaluation/pipeline.py --model-name gpt-4o --api-key $MCPBENCH_API_KEY --base-url $MCPBENCH_BASE_URL --notion-key $NOTION_API_KEY --tasks online_resume --duplicate-pages --source-pages '{"online_resume": "https://notion.so/page-url"}'
-   ```
+2. **Create a Notion Integration & Grant Access**  
+   a. Go to [Notion Integrations](https://www.notion.so/profile/integrations) and create a new internal integration.  
+   b. Copy the generated **Internal Integration Token** (this will be your `NOTION_API_KEY`).  
+   c. Share the **root “MCPBench” page** with the new integration (*Full Access*).
 
-## Key Features
+   ![API Access](asset/api_access.png)
+   ![Grant Access](asset/grant_access.png)
+   ![Create Integration](asset/create_integration.png)
+   ![Source Page](asset/source_page.png)
 
-- **Unified Evaluation Pipeline**: Single entry point for comprehensive model testing
-- **Automated Task Discovery**: 20 tasks across 6 categories (online_resume, habit_tracker, japan_travel_planner, job_applications, social_media_content_planning_system, team_projects)
-- **Page Duplication**: Optional page duplication for consistent testing environments
-- **Comprehensive Reporting**: JSON, CSV, and console output with detailed metrics
-- **Multi-Model Support**: Compatible with OpenAI, Anthropic, Google, and other providers
-- **Parallel/Sequential Execution**: Configurable execution modes
+---
 
-## Testing
+## 2 · Environment Variables
 
-Run the complete test suite to validate functionality:
+Add these to your shell startup file (e.g., `~/.zshrc`) or export them in your session:
 
 ```bash
-conda activate mcpbench
+# Mandatory
+export NOTION_API_KEY="your_notion_key"        # From step 2b above
+export MCPBENCH_BASE_URL="https://your-mcp-server"
+export MCPBENCH_API_KEY="your_model_api_key"   # Auth token for your MCP server
+export MCPBENCH_MODEL_NAME="your_model_name"   # e.g. gpt-4o
+
+# Optional (for verbose tracing through OpenAI endpoints)
+export OPENAI_API_KEY="your_openai_key"
+```
+
+---
+
+## 3 · Installation
+
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+## 4 · Authenticate with Notion
+
+```bash
+# Choose browser engine: firefox | chromium (default: chromium)
+python src/notion_login.py --headless --browser firefox
+# Verify login succeeded
+python tests/test_login.py
+```
+
+---
+
+## 5 · Run the Evaluation
+
+```bash
+# Evaluate ALL 20 tasks
+python src/pipeline.py --tasks all --model-name $MCPBENCH_MODEL_NAME
+
+# Evaluate a single task group
+python src/pipeline.py --tasks online_resume --model-name $MCPBENCH_MODEL_NAME
+
+# Evaluate one specific task
+python src/pipeline.py --tasks online_resume/task_1 --model-name $MCPBENCH_MODEL_NAME
+```
+
+Results are written to `./results/` (JSON + CSV).  
+Open the generated CSV in any spreadsheet tool for a quick overview.
+
+---
+
+## 6 · Testing
+
+Run the full test suite to validate that everything is wired correctly:
+
+```bash
 python tests/run_all_tests.py
 ```
 
-See [tests/README.md](tests/README.md) for detailed testing information.
+You can also run individual tests, e.g.:
 
-## Documentation
+```bash
+pytest tests/test_login.py
+```
 
-- [Evaluation Pipeline Details](docs/EVALUATION_README.md) - Comprehensive guide on how the evaluation system works
+---
 
-## Project Structure
+## 7 · Project Structure
 
 ```
 MCPBench/
-├── src/evaluation/
-│   ├── pipeline.py          # Main evaluation pipeline
-│   └── evaluate.py          # Individual task verification
-├── tasks/                   # 20 evaluation tasks across 6 categories
-├── tests/                   # Comprehensive test suite  
-├── docs/                    # Documentation
-└── data/results/           # Evaluation outputs (JSON, CSV)
+├── src/
+│   ├── pipeline.py            # Main evaluation entry point
+│   ├── notion_login.py        # Browser-based login utility
+│   └── core/                  # Task runner, results reporter, template mgr.
+├── tasks/                     # 20 evaluation tasks across 6 categories
+├── tests/                     # Full pytest suite
+├── docs/                      # Additional guides & screenshots
+└── results/                   # Auto-generated evaluation outputs
 ```
 
-## Contributing
+---
 
-Tasks are organized in the `tasks/` directory. Each task includes:
-- `description.md`: Task instructions for the AI model
-- `verify.py`: Verification script to check task completion
+## 8 · Contributing
+
+1. Fork the repository and create a feature branch.  
+2. Add new tasks inside `tasks/<category>/<task_n>/` with a `description.md` and a `verify.py`.  
+3. Ensure all tests pass.  
+4. Submit a pull request — contributions are welcome!
+
+---
+
+Happy benchmarking! 🎉
