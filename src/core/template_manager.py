@@ -161,7 +161,7 @@ class TemplateManager:
         task_name: str,
         *,
         max_retries: int = 2,
-        initial_wait_ms: int = 120_000,
+        initial_wait_ms: int = 180_000,
     ) -> Tuple[str, str]:
         """Duplicate a template for a specific task using Playwright.
         

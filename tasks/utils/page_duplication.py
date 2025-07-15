@@ -125,7 +125,7 @@ def duplicate_current_page(
     page: Page,
     new_title: str | None = None,
     *,
-    wait_timeout: int = 120_000,
+    wait_timeout: int = 180_000,
 ) -> str:
     """Duplicate the *currently open* Notion page and optionally rename it.
 
@@ -135,7 +135,7 @@ def duplicate_current_page(
         The page object pointing to the Notion page that should be duplicated – **must already be loaded**.
     new_title : str | None, optional
         If provided, the newly-created duplicate will be renamed via the Notion API.
-    wait_timeout : int, default 120_000
+    wait_timeout : int, default 180_000
         Maximum time (in **milliseconds**) to wait for the browser to navigate to the duplicated page.
 
     Returns
@@ -150,11 +150,11 @@ def duplicate_current_page(
     """
     try:
         log("Opening page menu…")
-        page.wait_for_selector(PAGE_MENU_BUTTON_SELECTOR, state="visible", timeout=20_000)
+        page.wait_for_selector(PAGE_MENU_BUTTON_SELECTOR, state="visible", timeout=30_000)
         page.click(PAGE_MENU_BUTTON_SELECTOR)
 
         log("Clicking Duplicate…")
-        page.wait_for_selector(DUPLICATE_MENU_ITEM_SELECTOR, timeout=15_000)
+        page.wait_for_selector(DUPLICATE_MENU_ITEM_SELECTOR, timeout=30_000)
         page.click(DUPLICATE_MENU_ITEM_SELECTOR)
 
         original_url = page.url
@@ -162,31 +162,16 @@ def duplicate_current_page(
         duplicated_page_id: str | None = None
 
         log("Waiting for duplicated page to load (up to %.1f s)…" % (wait_timeout / 1000))
+        # Strict behaviour: if Playwright does not navigate to a different URL within
+        # the timeout we consider the duplication failed and let the timeout propagate
+        # so that caller-level retry logic can handle it. No fallback heuristics.
+        page.wait_for_url(lambda url: url != original_url, timeout=wait_timeout)
+        duplicated_url = page.url
+        log(f"✅ Duplicated page loaded at {duplicated_url}")
         try:
-            page.wait_for_url(lambda url: url != original_url, timeout=wait_timeout)
-            duplicated_url = page.url
-            log(f"✅ Duplicated page loaded at {duplicated_url}")
-            try:
-                duplicated_page_id = _extract_page_id_from_url(duplicated_url)
-            except Exception:
-                duplicated_page_id = None
-        except PlaywrightTimeoutError:
-            # Even if Playwright timed out, the duplication might still have succeeded but the navigation was slow.
-            # Attempt to parse the current URL anyway – if it changed we can still continue without interactive pause.
-            duplicated_url = page.url
-            if duplicated_url != original_url:
-                log("⚠️  Navigation timeout – attempting to parse page ID from current URL anyway…")
-                try:
-                    duplicated_page_id = _extract_page_id_from_url(duplicated_url)
-                except Exception as exc:
-                    log(f"❌ Failed to parse page ID after timeout: {exc}")
-                    duplicated_page_id = None
-            else:
-                log("❌ Timed out waiting for the duplicated page and URL has not changed. Please check manually.")
-                if not page.context.browser.is_connected():
-                    # Defensive: if browser is already closed no interactive pause possible
-                    raise RuntimeError("Timed out waiting for duplicated page – URL did not change, duplication likely failed.")
-                page.pause()
+            duplicated_page_id = _extract_page_id_from_url(duplicated_url)
+        except Exception:
+            duplicated_page_id = None
 
         if new_title and duplicated_page_id:
             try:
