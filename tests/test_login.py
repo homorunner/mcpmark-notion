@@ -57,33 +57,54 @@ def main() -> None:
         print("Please run `python notion_login.py` first to create it.")
         sys.exit(1)
 
+    browsers_to_try = ["chromium", "firefox"]
+
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=is_headless)
-        context = browser.new_context(storage_state=STATE_PATH)
-        page = context.new_page()
+        success_browsers: list[str] = []
 
-        login_url = "https://www.notion.so/login"
-        print(f"🔗 Navigating to {login_url} to test session...")
+        for browser_name in browsers_to_try:
+            try:
+                print(f"🔍 Attempting verification using {browser_name}…")
+                browser_type = getattr(p, browser_name)
+                browser = browser_type.launch(headless=is_headless)
 
-        try:
-            page.goto(login_url, wait_until="domcontentloaded")
-            # Wait for the URL to change, indicating a successful redirect.
-            # We use a generous timeout to account for network speed.
-            page.wait_for_url(lambda url: url != login_url, timeout=30_000)
+                context = browser.new_context(storage_state=STATE_PATH)
+                page = context.new_page()
 
-            final_url = page.url
-            print(f"✅ Login state is valid. Redirected successfully to: {final_url}")
+                login_url = "https://www.notion.so/login"
+                print(f"🔗 Navigating to {login_url} to test session…")
 
-        except PlaywrightTimeoutError:
-            print("❌ Login state appears to be invalid or expired.")
-            print("Failed to redirect from the login page within the time limit.")
+                page.goto(login_url, wait_until="domcontentloaded")
+                # Wait for the URL to change, indicating a successful redirect.
+                page.wait_for_url(lambda url: url != login_url, timeout=30_000)
+
+                final_url = page.url
+                print(
+                    f"✅ Login state validated in {browser_name}. Redirected to: {final_url}"
+                )
+                success_browsers.append(browser_name)
+                browser.close()
+
+            except PlaywrightTimeoutError:
+                print(f"⚠️  {browser_name.capitalize()} could not verify login (timeout).")
+                browser.close()
+            except Exception as e:
+                print(f"⚠️  {browser_name.capitalize()} launch/verification failed: {e}")
+                try:
+                    browser.close()
+                except Exception:
+                    pass
+        if not success_browsers:
+            print("❌ Login state appears to be invalid in both Chromium and Firefox.")
             print("Please run `python notion_login.py` again.")
             sys.exit(1)
-        except Exception as e:
-            print(f"An unexpected error occurred: {e}")
-            sys.exit(1)
-        finally:
-            browser.close()
+        elif len(success_browsers) == len(browsers_to_try):
+            print("✅ Login state validated in both Chromium and Firefox.")
+        else:
+            succeeded = success_browsers[0]
+            print(
+                f"ℹ️  Only {succeeded} succeeded. Consider using this browser engine for future runs."
+            )
 
     print("🎉 Verification complete.")
 

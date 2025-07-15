@@ -3,23 +3,30 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError, BrowserContext, Page
+from playwright.sync_api import (
+    sync_playwright,
+    TimeoutError as PlaywrightTimeoutError,
+    BrowserContext,
+    Page,
+)
 
 
-class NotionClient:
+class NotionLoginHelper:
     """Utility helper for logging into Notion using Playwright.
 
-    The helper **never** re-uses a previously saved ``notion_state.json``. Instead it
-    forces a fresh login and overwrites the state file on every successful run. This
-    guarantees that outdated or invalid sessions are not reused.
+    This helper supersedes the previous ``NotionClient`` to avoid naming
+    collisions with the official ``notion_client`` SDK. It additionally
+    supports selecting the underlying browser engine (Chromium or Firefox).
 
     Typical usage::
 
-        from utils.notion_client import NotionClient
+        from utils.notion_login_helper import NotionLoginHelper
 
-        client = NotionClient(url="https://www.notion.so/my-workspace", headless=False)
-        context = client.login()  # Opens a browser window, waits for login
+        helper = NotionLoginHelper(url="https://www.notion.so/my-workspace", headless=False, browser="firefox")
+        context = helper.login()  # Opens a browser window, waits for login
     """
+
+    SUPPORTED_BROWSERS = {"chromium", "firefox"}
 
     def __init__(
         self,
@@ -27,8 +34,9 @@ class NotionClient:
         url: str | None = None,
         headless: bool = True,
         state_path: Optional[str | Path] = None,
+        browser: str = "chromium",
     ) -> None:
-        """Create a new ``NotionClient``.
+        """Create a new :class:`NotionLoginHelper` instance.
 
         Args:
             url: The Notion URL that should be opened after the browser launches. The
@@ -37,16 +45,24 @@ class NotionClient:
             headless: Whether Playwright should launch the browser in headless mode.
             state_path: Where to save the Playwright storage state after a successful
                  login. Defaults to ``<project-root>/notion_state.json``.
+            browser: Which Playwright browser engine to use. Either ``"chromium"`` (default)
+                 or ``"firefox"``.
         """
+        if browser not in self.SUPPORTED_BROWSERS:
+            raise ValueError(
+                f"Unsupported browser '{browser}'. Supported browsers are: {', '.join(self.SUPPORTED_BROWSERS)}"
+            )
+
         # Default to Notion's login page if no specific URL provided.
         self.url = url or "https://www.notion.so/login"
         self.headless = headless
+        self.browser_name = browser
         # Resolve default state file location lazily to the *current* project root
         self.state_path = Path(state_path or Path.cwd() / "notion_state.json").expanduser().resolve()
 
         self._browser_context: Optional[BrowserContext] = None
         self._playwright = None  # Late-bound Playwright instance
-        self._browser = None  # Underlying Chromium browser instance
+        self._browser = None  # Underlying browser instance
 
     # ---------------------------------------------------------------------
     # Public helpers
@@ -72,7 +88,11 @@ class NotionClient:
         if self._playwright is None:
             self._playwright = sync_playwright().start()
 
-        self._browser = self._playwright.chromium.launch(headless=self.headless)
+        # ------------------------------------------------------------------
+        # Select browser engine dynamically
+        # ------------------------------------------------------------------
+        browser_type = getattr(self._playwright, self.browser_name)
+        self._browser = browser_type.launch(headless=self.headless)
         context = self._browser.new_context()
         page = context.new_page()
 
@@ -171,7 +191,7 @@ class NotionClient:
             try:
                 page.get_by_role("button", name="Continue", exact=True).click()
             except Exception as e:
-                raise RuntimeError(f"Could not submit email via button. Error: {e}")
+                raise RuntimeError(f"Could not submit email via button. Error: {e}") from e
 
         try:
             # Wait for verification code input, placeholder is "Enter code"
@@ -187,7 +207,7 @@ class NotionClient:
             try:
                 page.get_by_role("button", name="Continue", exact=True).click()
             except Exception as e:
-                raise RuntimeError(f"Could not submit verification code via button. Error: {e}")
+                raise RuntimeError(f"Could not submit verification code via button. Error: {e}") from e
 
         # Wait until we are redirected away from the login page (workspace loaded)
         try:
@@ -201,7 +221,7 @@ class NotionClient:
             page.goto(self.url, wait_until="domcontentloaded")
 
     # Allow the helper to be used as a context manager
-    def __enter__(self) -> "NotionClient":
+    def __enter__(self) -> "NotionLoginHelper":
         self.login()
         return self
 

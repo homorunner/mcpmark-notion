@@ -33,7 +33,7 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from utils.notion_client import NotionClient  # noqa: E402  pylint: disable=wrong-import-position
+from utils.notion_login_helper import NotionLoginHelper  # noqa: E402  pylint: disable=wrong-import-position
 
 
 def parse_args() -> argparse.Namespace:
@@ -47,6 +47,13 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Run the login flow in headless mode (prompts for credentials in the terminal).",
     )
+
+    parser.add_argument(
+        "--browser",
+        default="firefox",
+        choices=["chromium", "firefox"],
+        help="Which browser engine to use for Playwright.",
+    )
     return parser.parse_args()
 
 
@@ -55,8 +62,8 @@ def main() -> None:
 
     print("🚀 Starting Notion login helper…")
 
-    # URL is no longer passed; NotionClient will default to the login page.
-    client = NotionClient(headless=args.headless)
+    # URL is no longer passed; NotionLoginHelper will default to the login page.
+    client = NotionLoginHelper(headless=args.headless, browser=args.browser)
     try:
         client.login()
     except Exception as exc:  # pylint: disable=broad-except
