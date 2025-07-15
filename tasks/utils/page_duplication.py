@@ -121,7 +121,12 @@ def _find_child_page_id_recursive(notion_client, block_id: str, title: str) -> O
 # Playwright driven duplication helpers
 # ---------------------------------------------------------------------------
 
-def duplicate_current_page(page: Page, new_title: str | None = None, *, wait_timeout: int = 120_000) -> Optional[str]:
+def duplicate_current_page(
+    page: Page,
+    new_title: str | None = None,
+    *,
+    wait_timeout: int = 120_000,
+) -> str:
     """Duplicate the *currently open* Notion page and optionally rename it.
 
     Parameters
@@ -135,38 +140,18 @@ def duplicate_current_page(page: Page, new_title: str | None = None, *, wait_tim
 
     Returns
     -------
-    Optional[str]
-        The page ID of the duplicated page if the duplication was successful, otherwise ``None``.
+    str
+        The page ID of the duplicated page.
+
+    Raises
+    ------
+    RuntimeError
+        If the duplication fails or the page ID cannot be determined within the timeout.
     """
     try:
         log("Opening page menu…")
-        # Wait for page to be fully loaded
-        page.wait_for_load_state("networkidle", timeout=30_000)
-        
-        # Try multiple selector strategies
-        menu_button = None
-        selectors_to_try = [
-            '[data-testid="more-button"]',
-            'div.notion-topbar-more-button', 
-            '[aria-label="More"]',
-            'button[aria-label="More"]',
-            '[role="button"]:has-text("More")',
-            'button:has-text("⋯")',
-            'div[role="button"]:has-text("⋯")'
-        ]
-        
-        for selector in selectors_to_try:
-            try:
-                page.wait_for_selector(selector, state="visible", timeout=5_000)
-                menu_button = selector
-                break
-            except PlaywrightTimeoutError:
-                continue
-        
-        if not menu_button:
-            raise PlaywrightTimeoutError("Could not find page menu button")
-            
-        page.click(menu_button)
+        page.wait_for_selector(PAGE_MENU_BUTTON_SELECTOR, state="visible", timeout=20_000)
+        page.click(PAGE_MENU_BUTTON_SELECTOR)
 
         log("Clicking Duplicate…")
         page.wait_for_selector(DUPLICATE_MENU_ITEM_SELECTOR, timeout=15_000)
@@ -200,7 +185,7 @@ def duplicate_current_page(page: Page, new_title: str | None = None, *, wait_tim
                 log("❌ Timed out waiting for the duplicated page and URL has not changed. Please check manually.")
                 if not page.context.browser.is_connected():
                     # Defensive: if browser is already closed no interactive pause possible
-                    return None
+                    raise RuntimeError("Timed out waiting for duplicated page – URL did not change, duplication likely failed.")
                 page.pause()
 
         if new_title and duplicated_page_id:
@@ -209,11 +194,17 @@ def duplicate_current_page(page: Page, new_title: str | None = None, *, wait_tim
             except Exception as exc:
                 log(f"⚠️  Skipped renaming due to error: {exc}")
 
-        # Return the new page ID (or None if duplication failed)
+        if duplicated_page_id is None:
+            raise RuntimeError("Failed to duplicate current Notion page – no page ID could be determined.")
+
         return duplicated_page_id
-    except PlaywrightTimeoutError:
-        log("❌ Failed to duplicate. Ensure the page is fully loaded, duplicate manually if needed.")
-        page.pause()
+    except PlaywrightTimeoutError as exc:
+        log(
+            "❌ Playwright timed out while duplicating page. Ensure the page is fully loaded and try again."
+        )
+        if page.context.browser.is_connected():
+            page.pause()
+        raise RuntimeError("Playwright timeout during duplication") from exc
 
 
 # ---------------------------------------------------------------------------

@@ -153,7 +153,15 @@ class TemplateManager:
             
         return None
     
-    def duplicate_template_for_task(self, template_url: str, category: str, task_name: str) -> Tuple[str, str]:
+    def duplicate_template_for_task(
+        self,
+        template_url: str,
+        category: str,
+        task_name: str,
+        *,
+        max_retries: int = 2,
+        initial_wait_ms: int = 120_000,
+    ) -> Tuple[str, str]:
         """Duplicate a template for a specific task using Playwright.
         
         Args:
@@ -164,64 +172,77 @@ class TemplateManager:
         Returns:
             Tuple of (duplicated_url, duplicated_id)
         """
-        with sync_playwright() as p:
-            # Dynamically select the requested browser engine
-            browser_type = getattr(p, self.browser_name)
-            browser: Browser = browser_type.launch(headless=self.headless)
-            
-            # Use saved state if available
-            context = browser.new_context(
-                storage_state=str(self.state_file) if self.state_file.exists() else None
+        # ------------------------------------------------------------------
+        # Ensure authentication state is present *before* launching Playwright
+        # ------------------------------------------------------------------
+        if not self.state_file.exists():
+            raise FileNotFoundError(
+                "Authentication state 'notion_state.json' not found. "
+                "Run 'python notion_login.py' (or the Notion login helper) before executing the pipeline."
             )
-            page = context.new_page()
-            
+
+        attempt = 0
+        last_exc: Optional[Exception] = None
+
+        while attempt <= max_retries:
+            wait_timeout = initial_wait_ms * (attempt + 1)
+
             try:
-                # Set the Notion API key in environment for the duplication helper
-                if self.notion_key:
-                    os.environ["NOTION_API_KEY"] = self.notion_key
-                
-                log(f"Navigating to template for {category}...")
-                page.goto(template_url, wait_until="load")
-                
-                # Handle login if needed
-                if "notion.so/login" in page.url:
-                    if self.headless:
-                        raise RuntimeError(
-                            "Login required but running in headless mode. "
-                            "Please run in non-headless mode first to save authentication."
-                        )
-                    log("Login required – please sign in manually, then press ▶ resume to continue...")
-                    page.pause()
-                
-                # Save authentication state
-                context.storage_state(path=str(self.state_file))
-                
-                # Duplicate the template with a specific title
-                duplicate_title = f"[EVAL] {task_name} - Copy"
-                duplicated_id = duplicate_current_page(page, duplicate_title)
-                
-                # Fallback: try to extract ID from URL if not returned
-                if not duplicated_id:
-                    try:
-                        duplicated_id = self._extract_template_id_from_url(page.url)
-                        log(f"ℹ️  Extracted ID from URL: {duplicated_id}")
-                    except Exception:
-                        duplicated_id = None
-                
-                if not duplicated_id:
-                    raise RuntimeError("Failed to get duplicated template ID")
-                
-                duplicated_url = page.url
-                
-                log(f"✅ Template duplicated successfully: {duplicated_id}")
-                
-                # Save state again for future use
-                context.storage_state(path=str(self.state_file))
-                
-                return duplicated_url, duplicated_id
-                
+                with sync_playwright() as p:
+                    # Dynamically select the requested browser engine for each attempt
+                    browser_type = getattr(p, self.browser_name)
+                    browser: Browser = browser_type.launch(headless=self.headless)
+
+                    # Use saved state if available
+                    context = browser.new_context(
+                        storage_state=str(self.state_file) if self.state_file.exists() else None
+                    )
+                    page = context.new_page()
+
+                    # Set the Notion API key in environment for the duplication helper
+                    if self.notion_key:
+                        os.environ["NOTION_API_KEY"] = self.notion_key
+
+                    log(f"[{attempt+1}/{max_retries+1}] Navigating to template for {category}…")
+                    page.goto(template_url, wait_until="load")
+
+                    # Save authentication state
+                    context.storage_state(path=str(self.state_file))
+
+                    duplicate_title = f"[EVAL] {task_name} - Copy"
+
+                    # Attempt duplication with adaptive timeout
+                    duplicated_id = duplicate_current_page(page, duplicate_title, wait_timeout=wait_timeout)
+
+                    duplicated_url = page.url
+
+                    log(
+                        f"✅ Template duplicated successfully on attempt {attempt+1}: {duplicated_id}"
+                    )
+
+                    # Save state again for future use
+                    context.storage_state(path=str(self.state_file))
+
+                    return duplicated_url, duplicated_id
+
+            except Exception as exc:
+                last_exc = exc
+                attempt += 1
+                if attempt > max_retries:
+                    break
+                log(
+                    f"⚠️  Duplication attempt {attempt}/{max_retries+1} failed: {exc}. "
+                    f"Retrying with timeout {initial_wait_ms * (attempt + 1)/1000:.1f}s…"
+                )
+
             finally:
-                browser.close()
+                # Ensure browser is closed if opened inside with-block; the context manager handles it.
+                pass
+
+        # If we reach here all attempts failed
+        raise RuntimeError(
+            f"Template duplication failed for task '{task_name}' in category '{category}' after {max_retries + 1} attempts: {last_exc}"
+        )
     
     def delete_template(self, template_id: str) -> bool:
         """Delete (archive) a template.
