@@ -26,13 +26,23 @@ logger = logging.getLogger(__name__)
 class TemplateManager:
     """Manages duplication of Notion templates using Playwright."""
     
-    def __init__(self, notion_key: str, headless: bool = True):
-        """Initialize with Notion API key.
-        
+    def __init__(self, notion_key: str, headless: bool = True, browser: str = "firefox"):
+        """Initialize a new ``TemplateManager`` instance.
+
         Args:
-            notion_key: Notion API key
-            headless: Whether to run browser in headless mode
+            notion_key: Notion API key.
+            headless: Whether Playwright should run in headless mode.
+            browser: The underlying browser engine to use (``"chromium"`` or ``"firefox"``).
+                Defaults to ``"firefox"`` to match the default used by the ``notion_login`` helper.
         """
+
+        supported_browsers = {"chromium", "firefox"}
+        if browser not in supported_browsers:
+            raise ValueError(
+                f"Unsupported browser '{browser}'. Supported browsers are: {', '.join(supported_browsers)}"
+            )
+
+        self.browser_name = browser
         self.notion_key = notion_key
         self.notion_client = Client(auth=notion_key)
         self.headless = headless
@@ -155,7 +165,9 @@ class TemplateManager:
             Tuple of (duplicated_url, duplicated_id)
         """
         with sync_playwright() as p:
-            browser: Browser = p.chromium.launch(headless=self.headless)
+            # Dynamically select the requested browser engine
+            browser_type = getattr(p, self.browser_name)
+            browser: Browser = browser_type.launch(headless=self.headless)
             
             # Use saved state if available
             context = browser.new_context(

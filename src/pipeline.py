@@ -29,7 +29,8 @@ class EvaluationPipeline:
                  base_url: str,
                  notion_key: str,
                  max_workers: int = 3,
-                 timeout: int = 300
+                 timeout: int = 300,
+                 browser: str = 'firefox'
                  ):
         # Main config
         self.model_name = model_name
@@ -38,11 +39,12 @@ class EvaluationPipeline:
         self.notion_key = notion_key
         self.max_workers = max_workers
         self.timeout = timeout
+        self.browser = browser
         
         # Initialize managers
         self.task_manager = TaskManager()
         self.results_reporter = ResultsReporter()
-        self.template_manager = TemplateManager(notion_key)
+        self.template_manager = TemplateManager(notion_key, browser=browser)
         self.notion_runner = NotionRunner(model_name, api_key, base_url, notion_key)
         
     
@@ -95,6 +97,14 @@ def main():
     # Execution configuration
     parser.add_argument('--max-workers', type=int, default=3, help='Maximum number of concurrent workers')
     parser.add_argument('--timeout', type=int, default=300, help='Timeout in seconds for each task')
+
+    # Playwright configuration
+    parser.add_argument(
+        '--browser',
+        default='firefox',
+        choices=['chromium', 'firefox'],
+        help='Which Playwright browser engine to use (default: firefox)'
+    )
     
     # Output configuration
     parser.add_argument('--output-dir', type=Path, default=Path('data/results'), help='Directory to save results')
@@ -109,7 +119,9 @@ def main():
     api_key = args.api_key or os.getenv('MCPBENCH_API_KEY')
     base_url = args.base_url or os.getenv('MCPBENCH_BASE_URL')
     notion_key = args.notion_key or os.getenv('NOTION_API_KEY')
-    
+
+    browser_choice = args.browser
+
     # Initialize and run pipeline
     pipeline = EvaluationPipeline(
         model_name=model_name,
@@ -118,6 +130,7 @@ def main():
         notion_key=notion_key,
         max_workers=args.max_workers,
         timeout=args.timeout,
+        browser=browser_choice,
     )
     
     # Run evaluation
