@@ -48,9 +48,11 @@ def verify(notion: Client, main_id: str = None) -> bool:
         print(f"Error querying Habit Tracker database: {e}", file=sys.stderr)
         return False
 
-    # 4. Search for expected habit entry
+    # 4. Search for expected habit entry (case-insensitive comparison)
+    expected_name_lower = EXPECTED_HABIT_NAME.lower()
     for entry in results:
-        if _extract_title(entry) != EXPECTED_HABIT_NAME:
+        title = _extract_title(entry)
+        if title.lower() != expected_name_lower:
             continue
         props: Dict[str, dict] = entry.get("properties", {})
 
