@@ -34,7 +34,7 @@ from .results_reporter import TaskResult
 class NotionRunner:
     """Handles execution of Notion tasks through an MCP-enabled agent."""
     
-    def __init__(self, model_name: str, api_key: str, base_url: str, notion_key: str):
+    def __init__(self, model_name: str, api_key: str, base_url: str, notion_key: str, timeout: int = 600):
         """Initialize with model and API configuration.
         
         Args:
@@ -47,11 +47,16 @@ class NotionRunner:
         self.api_key = api_key
         self.base_url = base_url
         self.notion_key = notion_key
+        self.timeout = timeout
         self.model_provider = self._create_model_provider()
         
         # Ensure logs directory exists
         self.logs_dir = Path("./logs")
         self.logs_dir.mkdir(parents=True, exist_ok=True)
+
+        # Retry configuration for transient network errors (e.g. ETIMEDOUT)
+        self.max_retries: int = 3  # total attempts = 1 + (max_retries-1) retries
+        self.retry_backoff: float = 5.0  # seconds, will multiply by attempt index for simple back-off
     
     def _create_model_provider(self) -> ModelProvider:
         """Create and return a custom model provider."""
@@ -153,46 +158,35 @@ class NotionRunner:
         
         return result.to_input_list()
     
-    def run_single_task_file(self, task_file_path: str, timeout: int = 300) -> Dict[str, Any]:
-        """Execute a single task from a file.
-        
-        Args:
-            task_file_path: Path to the task description file
-            timeout: Maximum execution time in seconds
-            
-        Returns:
-            Dictionary with keys:
-                - success: Whether the task completed successfully
-                - output: The assistant's response
-                - error: Error message if failed, None otherwise
-        """
+    def _run_single_task_file_once(self, task_file_path: str, timeout: int) -> Dict[str, Any]:
+        """Run the task exactly once (helper for retry wrapper)."""
         task_path = Path(task_file_path)
-        
+
         try:
             async def _run() -> str:
                 """Internal coroutine that performs the actual evaluation."""
                 async with await self._create_mcp_server() as server:
                     agent = Agent(name="Notion Agent", mcp_servers=[server])
                     ModelSettings.tool_choice = "required"
-                    
+
                     task_content = self._read_task_file(task_path)
-                    
+
                     # Set the Notion API key in environment for the MCP server
                     if self.notion_key:
                         os.environ["NOTION_API_KEY"] = self.notion_key
-                    
+
                     # Delegate to the async implementation to stream the response
                     return await self._run_single_task_async(agent, task_content)
-            
+
             # Execute with timeout handling
             assistant_response: str = asyncio.run(asyncio.wait_for(_run(), timeout=timeout))
-            
+
             return {
                 "success": True,
                 "output": assistant_response,
                 "error": None,
             }
-            
+
         except asyncio.TimeoutError:
             return {
                 "success": False,
@@ -205,6 +199,42 @@ class NotionRunner:
                 "output": "",
                 "error": str(exc),
             }
+
+    def run_single_task_file(self, task_file_path: str, timeout: int = 300) -> Dict[str, Any]:
+        """Execute a single task from a file, with automatic retries on transient
+        network errors such as ETIMEDOUT or ECONNREFUSED.
+
+        Args:
+            task_file_path: Path to the task description file
+            timeout: Maximum execution time in seconds for **each** attempt
+        """
+
+        for attempt in range(1, self.max_retries + 1):
+            result = self._run_single_task_file_once(task_file_path, timeout)
+
+            # Success – return immediately
+            if result["success"]:
+                return result
+
+            # Check for transient network error keywords
+            error_msg = result["error"] or ""
+            transient = any(code in error_msg for code in ("ETIMEDOUT", "ECONNREFUSED"))
+
+            if transient and attempt < self.max_retries:
+                wait_seconds = self.retry_backoff * attempt
+                print(
+                    f"[Retry] Attempt {attempt}/{self.max_retries} failed with transient network error. "
+                    f"Waiting {wait_seconds}s before retrying…",
+                    flush=True,
+                )
+                time.sleep(wait_seconds)
+                continue  # Retry
+
+            # Out of retries on transient error → normalize error message for callers
+            if transient:
+                result["error"] = "MCP Network Error"
+            # Non-transient error or out of retry attempts – return last result
+            return result
     
     def execute_task(self, task: Task, template_manager: Optional['TemplateManager'] = None) -> TaskResult:
         """Execute a complete task including verification and cleanup.
@@ -243,9 +273,25 @@ class NotionRunner:
             
             try:
                 # Run the task
-                result = self.run_single_task_file(temp_task_path, timeout=300)
-                
+                result = self.run_single_task_file(temp_task_path, timeout=self.timeout)
+
+                # If MCP network error after all retries, bubble up immediately
+                if not result["success"] and result.get("error") == "MCP Network Error":
+                    execution_time = time.time() - start_time
+                    # Clean up duplicated template if needed
+                    if template_manager and task.duplicated_template_id:
+                        template_manager.delete_template(task.duplicated_template_id)
+                    return TaskResult(
+                        task_name=task.name,
+                        success=False,
+                        execution_time=execution_time,
+                        error_message="MCP Network Error",
+                        category=task.category,
+                        task_id=task.task_id
+                    )
+
                 # Run verification
+                print(f"🔍 Running verification for task: {task.name}")
                 verify_result = subprocess.run(
                     [sys.executable, str(task.verify_path), task.duplicated_template_id],
                     capture_output=True,
@@ -257,6 +303,12 @@ class NotionRunner:
                 success = verify_result.returncode == 0
                 error_message = verify_result.stderr if not success and verify_result.stderr else None
                 execution_time = time.time() - start_time
+
+                if success:
+                    print(f"✅ Verification passed for task: {task.name}")
+                else:
+                    print(f"❌ Verification failed for task: {task.name}")
+                    print(f"Error: {error_message}")
                 
                 # Clean up the duplicated template if template_manager provided
                 if template_manager and task.duplicated_template_id:
