@@ -45,17 +45,16 @@ class EvaluationPipeline:
         self.task_manager = TaskManager()
         self.results_reporter = ResultsReporter()
         self.template_manager = TemplateManager(notion_key, model_name, browser=browser)
-        self.notion_runner = NotionRunner(model_name, api_key, base_url, notion_key)
+        self.notion_runner = NotionRunner(model_name, api_key, base_url, notion_key, timeout=timeout)
         
     
     def run_evaluation(self, task_filter: str) -> EvaluationReport:
         tasks = self.task_manager.filter_tasks(task_filter)
-        
-        # Process templates and update task objects with template info
     
         start_time = time.time()
         results = []
         for task in tasks:
+            # Process templates and update task objects with template info
             self.template_manager.process_task_templates([task])
             result = self.notion_runner.execute_task(task, self.template_manager)
             results.append(result)
@@ -64,7 +63,7 @@ class EvaluationPipeline:
         
         report = EvaluationReport(
             model_name=self.model_name,
-            model_config={"base_url": self.base_url, "timeout": self.timeout},
+            model_config={"base_url": self.base_url, "model_name": self.model_name, "timeout": self.timeout},
             start_time=datetime.fromtimestamp(start_time),
             end_time=datetime.fromtimestamp(end_time),
             total_tasks=len(tasks),
@@ -107,7 +106,7 @@ def main():
     )
     
     # Output configuration
-    parser.add_argument('--output-dir', type=Path, default=Path('data/results'), help='Directory to save results')
+    parser.add_argument('--output-dir', type=Path, default=Path('./results'), help='Directory to save results')
     parser.add_argument('--no-json', action='store_true', help='Skip JSON report generation')
     parser.add_argument('--no-csv', action='store_true', help='Skip CSV report generation')
     
@@ -137,17 +136,23 @@ def main():
     report = pipeline.run_evaluation(args.tasks)
     
     # Save results
-    args.output_dir.mkdir(parents=True, exist_ok=True)
+    # Incorporate model name and task filter into the final output directory.
+    # Replace dots in the model name with dashes to keep the directory name filesystem-friendly.
+    # Build output directory name: <model-name-with-dots-replaced>-<task-filter-with-slashes-replaced>
+    sanitized_model_name = (model_name or "unknown_model").replace(".", "-")
+    sanitized_task_filter = args.tasks.replace("/", "_")
+    output_dir = args.output_dir / f"{sanitized_model_name}_{sanitized_task_filter}"
+    output_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
     if not args.no_json:
-        json_path = args.output_dir / f"evaluation_report_{timestamp}.json"
+        json_path = output_dir / f"evaluation_report_{timestamp}.json"
         json_path = pipeline.results_reporter.save_json_report(report, str(json_path))
         print(f"📄 JSON report saved: {json_path}")
     
     if not args.no_csv:
-        csv_path = args.output_dir / f"evaluation_results_{timestamp}.csv"
-        summary_path = args.output_dir / f"evaluation_summary_{timestamp}.csv"
+        csv_path = output_dir / f"evaluation_results_{timestamp}.csv"
+        summary_path = output_dir / f"evaluation_summary_{timestamp}.csv"
         csv_path = pipeline.results_reporter.save_csv_report(report, str(csv_path))
         summary_path = pipeline.results_reporter.save_summary_csv(report, str(summary_path))
         print(f"📊 CSV reports saved: {csv_path}, {summary_path}")
