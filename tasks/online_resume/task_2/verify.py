@@ -2,6 +2,10 @@ import sys
 from notion_client import Client
 from tasks.utils import notion_utils
 
+
+def normalize_string(s):
+    return s.replace('\xa0', ' ')
+
 def verify(notion: Client, main_id: str = None) -> bool:
     """
     Verifies that '🇨🇳 Chinese' has been added under the 'Languages' heading.
@@ -34,7 +38,7 @@ def verify(notion: Client, main_id: str = None) -> bool:
                 continue
         
         if heading_found:
-            if language_entry == notion_utils.get_block_plain_text(block) and "English" in notion_utils.get_block_plain_text(all_blocks[i-1]):
+            if normalize_string(language_entry) == normalize_string(notion_utils.get_block_plain_text(block)) and "English" in notion_utils.get_block_plain_text(all_blocks[i-1]):
                 print(f"Success: Verified that '{language_entry}' was added under '{heading_text}'.")
                 return True
 
