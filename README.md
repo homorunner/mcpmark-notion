@@ -1,7 +1,7 @@
 # MCPBench
 
 MCPBench is a comprehensive evaluation suite for testing AI models’ ability to operate a Notion workspace through the **Model Context Protocol (MCP)**.  
-It ships with **20 real-world tasks** (e.g., habit tracker, online résumé builder) that can be run against **your own MCP server and your own Notion pages**.
+It ships with **20 real-world tasks** (e.g., habit tracker, online resume builder) that can be run against **your own MCP server and your own Notion pages**.
 
 ---
 
@@ -24,8 +24,6 @@ It ships with **20 real-world tasks** (e.g., habit tracker, online résumé buil
 ---
 
 ## 2 · Environment Variables
-
-Add these to your shell startup file (e.g., `~/.zshrc`) or export them in your session:
 
 ```bash
 # Mandatory
@@ -51,7 +49,7 @@ pip install -r requirements.txt
 ## 4 · Authenticate with Notion
 
 ```bash
-# Choose browser engine: firefox | chromium (default: chromium)
+# Choose browser engine: firefox | chromium
 python src/notion_login.py --headless --browser firefox
 # Verify login succeeded
 python tests/test_login.py
