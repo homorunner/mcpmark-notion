@@ -167,11 +167,24 @@ class ResultsReporter:
     
     def save_json_report(self, report: EvaluationReport, filename: str = None) -> Path:
         """Save report as JSON file."""
+        # -----------------------------------------------------------------
+        # Resolve output path
+        # -----------------------------------------------------------------
         if filename is None:
             timestamp = report.start_time.strftime("%Y%m%d_%H%M%S")
-            filename = f"evaluation_report_{timestamp}.json"
-        
-        output_path = self.output_dir / filename
+            output_path = self.output_dir / f"evaluation_report_{timestamp}.json"
+        else:
+            candidate = Path(filename)
+            # If the provided filename is absolute or already contains parent
+            # directories, respect it as-is; otherwise, place it inside the
+            # default output directory.
+            if candidate.is_absolute() or candidate.parent != Path('.'):
+                output_path = candidate
+            else:
+                output_path = self.output_dir / candidate
+
+        # Ensure destination directory exists (including nested folders)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
         
         # Convert report to JSON-serializable format
         report_dict = {
@@ -197,11 +210,20 @@ class ResultsReporter:
     
     def save_csv_report(self, report: EvaluationReport, filename: str = None) -> Path:
         """Save detailed task results as CSV file."""
+        # -----------------------------------------------------------------
+        # Resolve output path
+        # -----------------------------------------------------------------
         if filename is None:
             timestamp = report.start_time.strftime("%Y%m%d_%H%M%S")
-            filename = f"evaluation_results_{timestamp}.csv"
-        
-        output_path = self.output_dir / filename
+            output_path = self.output_dir / f"evaluation_results_{timestamp}.csv"
+        else:
+            candidate = Path(filename)
+            if candidate.is_absolute() or candidate.parent != Path('.'):
+                output_path = candidate
+            else:
+                output_path = self.output_dir / candidate
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
         
         with output_path.open("w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
@@ -227,11 +249,21 @@ class ResultsReporter:
     
     def save_summary_csv(self, report: EvaluationReport, filename: str = None) -> Path:
         """Save category summary as CSV file."""
+        # -----------------------------------------------------------------
+        # Resolve output path
+        # -----------------------------------------------------------------
         if filename is None:
             timestamp = report.start_time.strftime("%Y%m%d_%H%M%S")
-            filename = f"evaluation_summary_{timestamp}.csv"
+            output_path = self.output_dir / f"evaluation_summary_{timestamp}.csv"
+        else:
+            candidate = Path(filename)
+            if candidate.is_absolute() or candidate.parent != Path('.'):
+                output_path = candidate
+            else:
+                output_path = self.output_dir / candidate
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
         
-        output_path = self.output_dir / filename
         category_stats = report.get_category_stats()
         
         with output_path.open("w", newline="", encoding="utf-8") as f:
