@@ -9,17 +9,16 @@ It ships with **20 real-world tasks** (e.g., habit tracker, online resume builde
 
 1. **Duplicate the MCPBench Source Pages**  
    Copy the template database and pages into your workspace from the public template:  
-   [Duplicate MCPBench Source](https://early-rest-d97.notion.site/MCPBench-Source-22c0b91d1c3f80bb8c28d142062abe50?source=copy_link).
+   [Duplicate MCPBench Source](https://early-rest-d97.notion.site/MCPBench-Source-22c0b91d1c3f80bb8c28d142062abe50).
 
 2. **Create a Notion Integration & Grant Access**  
    a. Go to [Notion Integrations](https://www.notion.so/profile/integrations) and create a new internal integration.  
    b. Copy the generated **Internal Integration Token** (this will be your `NOTION_API_KEY`).  
    c. Share the **root “MCPBench” page** with the new integration (*Full Access*).
-
+   ![Source Page](asset/source_page.png)
+   ![Create Integration](asset/create_integration.png)
    ![API Access](asset/api_access.png)
    ![Grant Access](asset/grant_access.png)
-   ![Create Integration](asset/create_integration.png)
-   ![Source Page](asset/source_page.png)
 
 ---
 
@@ -75,23 +74,7 @@ Open the generated CSV in any spreadsheet tool for a quick overview.
 
 ---
 
-## 6 · Testing
-
-Run the full test suite to validate that everything is wired correctly:
-
-```bash
-python tests/run_all_tests.py
-```
-
-You can also run individual tests, e.g.:
-
-```bash
-pytest tests/test_login.py
-```
-
----
-
-## 7 · Project Structure
+## 6 · Project Structure
 
 ```
 MCPBench/
@@ -107,7 +90,7 @@ MCPBench/
 
 ---
 
-## 8 · Contributing
+## 7 · Contributing
 
 1. Fork the repository and create a feature branch.  
 2. Add new tasks inside `tasks/<category>/<task_n>/` with a `description.md` and a `verify.py`.  
