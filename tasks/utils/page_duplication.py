@@ -1,13 +1,10 @@
 """page_duplication.py
-Utility helpers for duplicating Notion pages using Playwright + Notion SDK.
+Utility helpers for duplicating Notion templates (pages or databases) using
+Playwright + Notion SDK.
 
-Main entry points
------------------
-• duplicate_child_page(parent_url, source_title, target_title, *, headless=False)
-    Recursively locate a child page under *parent_url*, duplicate it via Playwright,
-    then rename the duplicated copy using the Notion API.
-
-• duplicate_current_page(page: playwright.sync_api.Page, new_title: str | None)
+Main entry point
+----------------
+• duplicate_current_template(page: playwright.sync_api.Page, new_title: str | None)
     Low-level helper that operates on an *already opened* Page object.
 
 All other functions are considered private.
@@ -30,6 +27,11 @@ from playwright.sync_api import (
 # ---------------------------------------------------------------------------
 PAGE_MENU_BUTTON_SELECTOR: Final[str] = '[data-testid="more-button"], div.notion-topbar-more-button, [aria-label="More"], button[aria-label="More"]'
 DUPLICATE_MENU_ITEM_SELECTOR: Final[str] = 'text="Duplicate"'
+# When duplicating a *database*, Notion shows a submenu with two options. We
+# want to pick "Duplicate with content" so that the evaluation template keeps
+# all data/properties identical to the original. The selector below should be
+# robust across light/dark themes because it matches the exact text label.
+DUPLICATE_WITH_CONTENT_SELECTOR: Final[str] = 'text="Duplicate with content"'
 
 
 # ---------------------------------------------------------------------------
@@ -45,45 +47,63 @@ def log(msg: str) -> None:
 # Notion-SDK helpers (no Playwright)
 # ---------------------------------------------------------------------------
 
-def _extract_page_id_from_url(url: str) -> str:
-    """Extract canonical UUID page ID from a Notion URL."""
+def _extract_template_id_from_url(url: str) -> str:
+    """Extract canonical UUID template (page or database) ID from a Notion URL."""
     url = url.split("?")[0].split("#")[0]
     slug = url.rstrip("/").split("/")[-1]
     compact = "".join(c for c in slug if c.isalnum())
     if len(compact) < 32:
-        raise ValueError(f"Could not parse page ID from URL: {url}")
+        raise ValueError(f"Could not parse template ID from URL: {url}")
     compact = compact[-32:]
     return f"{compact[0:8]}-{compact[8:12]}-{compact[12:16]}-{compact[16:20]}-{compact[20:]}"
 
 
-def _rename_page_via_api(page_id: str, new_title: str) -> None:
-    """Rename a Notion page using the official Notion SDK."""
+def _rename_template_via_api(template_id: str, new_title: str, template_type: str) -> None:
+    """Rename a Notion template (page *or* database) using the Notion SDK.
+
+    This helper first attempts to rename the given ID as a *page*. If that
+    fails (e.g. the ID refers to a database), it falls back to renaming it as
+    a *database*.
+    """
     token = os.getenv("NOTION_API_KEY") or os.getenv("NOTION_TOKEN")
     if not token:
         log("⚠️  NOTION_API_KEY/NOTION_TOKEN not set – skipping rename.")
         return
 
     try:
-        from notion_client import Client  # imported lazily
+        from notion_client import Client  # imported lazily to avoid heavy import at module load
     except ImportError:
         log("⚠️  notion-client library not available – skipping rename.")
         return
 
     client = Client(auth=token)
+
     try:
-        client.pages.update(
-            page_id=page_id,
-            properties={
-                "title": {
-                    "title": [
-                        {"type": "text", "text": {"content": new_title}}
-                    ]
-                }
-            },
-        )
-        log(f"✅ Renamed page to '{new_title}' via Notion API")
+        if template_type == "page":
+            client.pages.update(
+                page_id=template_id,
+                properties={
+                    "title": {
+                        "title": [
+                            {"type": "text", "text": {"content": new_title}}
+                        ]
+                    }
+                },
+            )
+        else:
+            client.databases.update(
+                database_id=template_id,
+                title=[{"type": "text", "text": {"content": new_title}}],
+            )
+        log(f"✅ Renamed {template_type} to '{new_title}' via Notion API")
     except Exception as exc:
-        log(f"❌ Failed to rename page via Notion API: {exc}")
+        log(f"❌ Failed to rename {template_type} via Notion API: {exc}")
+
+# ---------------------------------------------------------------------------
+# Backwards-compatibility aliases (prevent import errors in external code)
+# ---------------------------------------------------------------------------
+
+# (Backward-compatibility aliases removed – callers should migrate.)
 
 
 # ---------------------------------------------------------------------------
@@ -121,13 +141,14 @@ def _find_child_page_id_recursive(notion_client, block_id: str, title: str) -> O
 # Playwright driven duplication helpers
 # ---------------------------------------------------------------------------
 
-def duplicate_current_page(
+def duplicate_current_template(
     page: Page,
     new_title: str | None = None,
     *,
+    template_type: str = "page",  # "page" or "database"
     wait_timeout: int = 180_000,
 ) -> str:
-    """Duplicate the *currently open* Notion page and optionally rename it.
+    """Duplicate the *currently open* Notion template (page **or** database).
 
     Parameters
     ----------
@@ -155,37 +176,45 @@ def duplicate_current_page(
 
         log("Clicking Duplicate…")
         page.wait_for_selector(DUPLICATE_MENU_ITEM_SELECTOR, timeout=30_000)
+        # For databases, "Duplicate" first opens a submenu – hover is enough
+        # to show it, then we need a 2nd click on "Duplicate with content".
+        page.hover(DUPLICATE_MENU_ITEM_SELECTOR)
         page.click(DUPLICATE_MENU_ITEM_SELECTOR)
+
+        if template_type == "database":
+            log("Selecting 'Duplicate with content' for database…")
+            page.wait_for_selector(DUPLICATE_WITH_CONTENT_SELECTOR, timeout=30_000)
+            page.click(DUPLICATE_WITH_CONTENT_SELECTOR)
 
         original_url = page.url
         duplicated_url: str | None = None
-        duplicated_page_id: str | None = None
+        duplicated_template_id: str | None = None
 
-        log("Waiting for duplicated page to load (up to %.1f s)…" % (wait_timeout / 1000))
+        log("Waiting for duplicated template to load (up to %.1f s)…" % (wait_timeout / 1000))
         # Strict behaviour: if Playwright does not navigate to a different URL within
         # the timeout we consider the duplication failed and let the timeout propagate
         # so that caller-level retry logic can handle it. No fallback heuristics.
         page.wait_for_url(lambda url: url != original_url, timeout=wait_timeout)
         duplicated_url = page.url
-        log(f"✅ Duplicated page loaded at {duplicated_url}")
+        log(f"✅ Duplicated template loaded at {duplicated_url}")
         try:
-            duplicated_page_id = _extract_page_id_from_url(duplicated_url)
+            duplicated_template_id = _extract_template_id_from_url(duplicated_url)
         except Exception:
-            duplicated_page_id = None
+            duplicated_template_id = None
 
-        if new_title and duplicated_page_id:
+        if new_title and duplicated_template_id:
             try:
-                _rename_page_via_api(duplicated_page_id, new_title)
+                _rename_template_via_api(duplicated_template_id, new_title, template_type)
             except Exception as exc:
                 log(f"⚠️  Skipped renaming due to error: {exc}")
 
-        if duplicated_page_id is None:
-            raise RuntimeError("Failed to duplicate current Notion page – no page ID could be determined.")
+        if duplicated_template_id is None:
+            raise RuntimeError("Failed to duplicate current Notion template – no template ID could be determined.")
 
-        return duplicated_page_id
+        return duplicated_template_id
     except PlaywrightTimeoutError as exc:
         log(
-            "❌ Playwright timed out while duplicating page. Ensure the page is fully loaded and try again."
+            "❌ Playwright timed out while duplicating template. Ensure the template is fully loaded and try again."
         )
         if page.context.browser.is_connected():
             page.pause()
@@ -193,67 +222,12 @@ def duplicate_current_page(
 
 
 # ---------------------------------------------------------------------------
-# High-level workflow
+# Backwards-compatibility alias – remove in a future major release
 # ---------------------------------------------------------------------------
 
-def duplicate_child_page(
-    parent_url: str,
-    source_title: str,
-    target_title: str,
-    *,
-    headless: bool = False,
-) -> Tuple[bool, Optional[str]]:
-    """Duplicate *source_title* under *parent_url* and rename to *target_title*.
+# (Removed legacy alias duplicate_current_page)
 
-    Returns
-    -------
-    Tuple[bool, Optional[str]]
-        A tuple ``(success, page_id)`` where ``success`` is ``True`` if the page was duplicated
-        successfully, and ``page_id`` is the ID of the duplicated page (``None`` if unsuccessful).
-    """
 
-    token = os.getenv("NOTION_API_KEY") or os.getenv("NOTION_TOKEN")
-    if not token:
-        raise EnvironmentError("NOTION_API_KEY or NOTION_TOKEN must be set to use duplicate_child_page().")
-
-    try:
-        from notion_client import Client
-    except ImportError as exc:
-        raise RuntimeError("notion-client library is required but not installed") from exc
-
-    notion = Client(auth=token)
-
-    parent_id = _extract_page_id_from_url(parent_url)
-    src_page_id = _find_child_page_id_recursive(notion, parent_id, source_title)
-    if not src_page_id:
-        raise ValueError(f"Could not locate a child page titled '{source_title}' under the parent page.")
-
-    src_page_info = notion.pages.retrieve(page_id=src_page_id)
-    src_page_url = src_page_info.get("url") or f"https://www.notion.so/{src_page_id.replace('-', '')}"
-
-    log(f"Source page found: {src_page_url} (ID: {src_page_id})")
-
-    duplicated_page_id: Optional[str] = None  # Initialize for scope safety
-
-    with sync_playwright() as p:
-        browser: Browser = p.chromium.launch(headless=headless)
-        state_file = Path("notion_state.json")
-        context = browser.new_context(storage_state=str(state_file) if state_file.exists() else None)
-        page = context.new_page()
-
-        log("Navigating to source page…")
-        page.goto(src_page_url, wait_until="load")
-
-        if "notion.so/login" in page.url:
-            log("Login required – please sign in manually, then press ▶ resume to continue…")
-            page.pause()
-
-        context.storage_state(path=str(state_file))
-
-        duplicated_page_id = duplicate_current_page(page, target_title)
-
-        log("Workflow complete – browser may be closed.")
-        context.storage_state(path=str(state_file))
-
-    success = duplicated_page_id is not None
-    return success, duplicated_page_id
+# ---------------------------------------------------------------------------
+# High-level workflow section removed (duplicate_child_page deprecated)
+# ---------------------------------------------------------------------------

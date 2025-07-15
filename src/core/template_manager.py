@@ -18,7 +18,7 @@ import logging
 
 # Add project root to path for tasks import
 sys.path.append(str(Path(__file__).parent.parent.parent))
-from tasks.utils.page_duplication import duplicate_current_page, log
+from tasks.utils.page_duplication import duplicate_current_template, log
 
 logger = logging.getLogger(__name__)
 
@@ -212,8 +212,16 @@ class TemplateManager:
 
                     duplicate_title = f"[EVAL IN PROGRESS - {self.model_name.upper()}] {task_name}"
 
-                    # Attempt duplication with adaptive timeout
-                    duplicated_id = duplicate_current_page(page, duplicate_title, wait_timeout=wait_timeout)
+                    # Determine template type (page vs database) *before* duplication
+                    template_id = self._extract_template_id_from_url(template_url)
+                    template_type = self._detect_template_type(template_id)
+
+                    duplicated_id = duplicate_current_template(
+                        page,
+                        duplicate_title,
+                        wait_timeout=wait_timeout,
+                        template_type=template_type,
+                    )
 
                     duplicated_url = page.url
 
@@ -338,3 +346,29 @@ class TemplateManager:
             task.duplicated_template_id = None
 
             return False  # Failure ❌
+
+# ------------------------------------------------------------------
+# Helper: detect whether a Notion object ID is a page or a database
+# ------------------------------------------------------------------
+
+    def _detect_template_type(self, template_id: str) -> str:
+        """Return "database" if *template_id* refers to a database, else "page"."""
+
+        # 1) Fast path: use the generic blocks endpoint (works for both)
+        try:
+            blk = self.notion_client.blocks.retrieve(block_id=template_id)
+            blk_type = blk.get("type")
+            if blk_type == "child_database":
+                return "database"
+            if blk_type == "page":
+                return "page"
+        except Exception:
+            # Ignore and fall back
+            pass
+
+        # 2) Fallback: explicit database retrieval
+        try:
+            self.notion_client.databases.retrieve(database_id=template_id)
+            return "database"
+        except Exception:
+            return "page"
