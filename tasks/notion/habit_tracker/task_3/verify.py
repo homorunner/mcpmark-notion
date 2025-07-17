@@ -53,12 +53,36 @@ def verify(notion: Client, main_id: str = None) -> bool:
         print("Error: Habit Tracker page not found.", file=sys.stderr)
         return False
 
-    # Fetch only direct child blocks of the page (one level) to find the summary table
+    # Fetch child blocks of the page (first level) and, if present, their children (second level)
     try:
-        blocks = notion.blocks.children.list(block_id=page_id).get("results", [])
+        first_level_blocks = notion.blocks.children.list(block_id=page_id).get("results", [])
     except Exception as e:
         print(f"Error retrieving child blocks of Habit Tracker page: {e}", file=sys.stderr)
         return False
+
+    # Traverse up to three levels deep (children, grandchildren, great-grandchildren)
+    MAX_DEPTH = 3
+    blocks = []
+    queue = [(page_id, 0)]  # (block_id, current_depth)
+
+    while queue:
+        blk_id, depth = queue.pop(0)
+        if depth >= MAX_DEPTH:
+            continue
+        try:
+            child_blocks = notion.blocks.children.list(block_id=blk_id).get("results", [])
+        except Exception:
+            # Skip this branch if we cannot fetch its children
+            continue
+
+        blocks.extend(child_blocks)
+
+        # If we haven't reached the max depth, add children that themselves have children to the queue
+        next_depth = depth + 1
+        if next_depth < MAX_DEPTH:
+            for cb in child_blocks:
+                if cb.get("has_children"):
+                    queue.append((cb["id"], next_depth))
 
     table_blocks = [b for b in blocks if b.get("type") == "table"]
     if not table_blocks:
