@@ -78,10 +78,7 @@ class EvaluationPipeline:
 
         # Directory that groups all tasks for this run
         model_slug = self.actual_model_name.replace(".", "-")
-        if self.exp_name:
-            self.base_experiment_dir = self.output_dir / self.exp_name / f"{service}_{model_slug}"
-        else:
-            self.base_experiment_dir = self.output_dir / f"{service}_{model_slug}"
+        self.base_experiment_dir = self.output_dir / self.exp_name / f"{service}_{model_slug}"
         self.base_experiment_dir.mkdir(parents=True, exist_ok=True)
 
     def _get_task_output_dir(self, task) -> Path:
@@ -230,9 +227,28 @@ class EvaluationPipeline:
         pipeline_end_time = time.time()
 
         # --------------------------------------------------------------
-        # Aggregate **all** task results in this experiment folder
+        # Aggregate results – combine current `results` with any previously
+        # saved TaskResults that ALSO match the current task_filter.
         # --------------------------------------------------------------
-        all_results = self._gather_all_task_results()
+
+        # Helper: determine if a TaskResult matches the filter string
+        def _matches_filter(tr: TaskResult, flt: str) -> bool:
+            if flt.lower() == "all":
+                return True
+            if "/" in flt:
+                # specific task (category/task_N)
+                return tr.task_name == flt
+            # category level
+            return tr.category == flt
+
+        # Pull existing reports from disk and merge
+        existing_results = [r for r in self._gather_all_task_results() if _matches_filter(r, task_filter)]
+
+        # Merge, giving preference to fresh `results` (avoids duplicates)
+        merged: dict[str, TaskResult] = {r.task_name: r for r in existing_results}
+        merged.update({r.task_name: r for r in results})  # overwrite with latest run
+
+        final_results = list(merged.values())
 
         aggregated_report = EvaluationReport(
             model_name=self.model,
@@ -244,10 +260,10 @@ class EvaluationPipeline:
             },
             start_time=datetime.fromtimestamp(pipeline_start_time),
             end_time=datetime.fromtimestamp(pipeline_end_time),
-            total_tasks=len(all_results),
-            successful_tasks=sum(1 for r in all_results if r.success),
-            failed_tasks=sum(1 for r in all_results if not r.success),
-            task_results=all_results,
+            total_tasks=len(final_results),
+            successful_tasks=sum(1 for r in final_results if r.success),
+            failed_tasks=sum(1 for r in final_results if not r.success),
+            task_results=final_results,
             tasks_filter=task_filter,
         )
 
