@@ -321,7 +321,6 @@ def main():
         "--no-csv", action="store_true", help="Skip CSV report generation"
     )
 
-    # Optional experiment name (used as sub-folder under output-dir)
     # Experiment name (required) – results are stored under results/<exp-name>/
     parser.add_argument(
         "--exp-name",
@@ -349,10 +348,7 @@ def main():
 
     # Create a unique output directory for the report
     sanitized_model_name = (args.model or "unknown_model").replace(".", "-")
-    if args.exp_name:
-        output_dir = args.output_dir / args.exp_name / f"{args.service}_{sanitized_model_name}"
-    else:
-        output_dir = args.output_dir / f"{args.service}_{sanitized_model_name}"
+    output_dir = args.output_dir / args.exp_name / f"{args.service}_{sanitized_model_name}"
     output_dir.mkdir(parents=True, exist_ok=True)
     sanitized_task_filter = args.tasks.replace("/", "_")
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
