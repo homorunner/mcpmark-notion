@@ -206,6 +206,7 @@ class NotionStateManager(BaseStateManager):
         template_title: str,
         wait_timeout: int = 180_000,
     ) -> str:
+        import pdb; pdb.set_trace()
         """Duplicates the currently open Notion template using Playwright."""
         try:
             logger.info("- Opening page menu...")
@@ -263,7 +264,8 @@ class NotionStateManager(BaseStateManager):
                 filter={"property": "object", "value": template_type},
             )
 
-            title_regex = re.compile(rf"^{re.escape(template_title)}\s*\((\d+)\)$")
+            # Only consider exactly one copy "Title (1)".
+            title_regex = re.compile(rf"^{re.escape(template_title)}\s*\(1\)$")
 
             def _extract_title(res):
                 if template_type == "page":
