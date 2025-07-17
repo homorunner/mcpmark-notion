@@ -7,6 +7,7 @@ This module handles the duplication and management of Notion templates
 (pages and databases) for consistent task evaluation using Playwright automation.
 """
 import os
+import time
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -326,6 +327,8 @@ class NotionStateManager(BaseStateManager):
                     page = context.new_page()
 
                     logger.info("- Navigating to template for %s...", category)
+                    # Start timing from the moment we begin navigating to the template page.
+                    start_time = time.time()
                     page.goto(template_url, wait_until="load", timeout=60_000)
                     context.storage_state(path=str(self.state_file))
 
@@ -344,6 +347,9 @@ class NotionStateManager(BaseStateManager):
                     duplicated_url = page.url
                     # Validate URL pattern again at this higher level (should already be validated inside).
                     context.storage_state(path=str(self.state_file))
+                    # Log how long the whole duplication (navigate → duplicate → rename) took.
+                    elapsed = time.time() - start_time
+                    logger.info("✅ Template duplicated and renamed successfully in %.2f seconds (task: %s).", elapsed, task_name)
                     return duplicated_url, duplicated_id
             except Exception as e:
                 # No additional cleanup here—handled inside _duplicate_current_template.
