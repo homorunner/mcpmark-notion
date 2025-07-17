@@ -126,13 +126,13 @@ class NotionTaskManager(BaseTaskManager):
         base_url = self.base_url
         api_key = self.api_key
         model_name = self.model_name
-        
         client = AsyncOpenAI(base_url=base_url, api_key=api_key)
         
         class CustomModelProvider(ModelProvider):
             def get_model(self, model_name_override: str | None) -> Model:
+                final_model_name = model_name_override or model_name
                 return OpenAIChatCompletionsModel(
-                    model=model_name_override or model_name, openai_client=client
+                    model=final_model_name, openai_client=client
                 )
         
         return CustomModelProvider()
@@ -364,21 +364,42 @@ class NotionTaskManager(BaseTaskManager):
             run_config=RunConfig(model_provider=self.model_provider)
         )
         
-        async for event in result.stream_events():
-            if event.type == "raw_response_event" and isinstance(
-                event.data, ResponseTextDeltaEvent
-            ):
-                # Print token deltas as we receive them
-                delta_text = event.data.delta
-                print(delta_text, end="", flush=True)
-            elif event.type == "run_item_stream_event":
-                if event.item.type == "tool_call_item":
-                    logger.info(
-                        f"\n-- Calling Tool: {event.item.raw_item.name}...",
-                        flush=True,
-                    )
-                elif event.item.type == "tool_call_output_item":
-                    logger.info("-- Tool call completed.", flush=True)
+        # Add a small delay to ensure the background task has started
+        await asyncio.sleep(0.1)
+
+        try:
+            event_count = 0
+            async for event in result.stream_events():
+                event_count += 1
+                logger.debug(f"Event {event_count}: {event}")
+                
+                # Check if event has type attribute
+                if hasattr(event, 'type'):
+                    logger.debug(f"Event type: {event.type}")
+                    
+                    if event.type == "raw_response_event":
+                        if hasattr(event, 'data') and isinstance(event.data, ResponseTextDeltaEvent):
+                            # Print token deltas as we receive them
+                            delta_text = event.data.delta
+                            print(delta_text, end="", flush=True)
+                    elif event.type == "run_item_stream_event":
+                        if hasattr(event, 'item'):
+                            if hasattr(event.item, 'type'):
+                                if event.item.type == "tool_call_item":
+                                    logger.info(
+                                        f"\n-- Calling Tool: {event.item.raw_item.name if hasattr(event.item, 'raw_item') else 'Unknown'}..."
+                                    )
+                                elif event.item.type == "tool_call_output_item":
+                                    pass
+                                    # logger.info("-- Tool call completed.")
+            
+            logger.info(f"Total events received: {event_count}")
+        except Exception as e:
+            logger.error(f"Error during streaming: {e}", exc_info=True)
+            if result._run_impl_task:
+                logger.error(f"Background task exception: {result._run_impl_task.exception()}")
+            raise
+        
         print()  # Final newline after the assistant's completion
         
         return result.to_input_list()
