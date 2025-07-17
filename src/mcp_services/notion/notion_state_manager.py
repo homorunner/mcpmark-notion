@@ -206,7 +206,6 @@ class NotionStateManager(BaseStateManager):
         template_title: str,
         wait_timeout: int = 180_000,
     ) -> str:
-        import pdb; pdb.set_trace()
         """Duplicates the currently open Notion template using Playwright."""
         try:
             logger.info("- Opening page menu...")
