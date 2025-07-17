@@ -30,17 +30,17 @@ class ModelConfig:
             "base_url_var": "OPENAI_BASE_URL",
             "actual_model_name": "gpt-4o",
         },
-        "gpt-4": {
+        "gpt-4.1": {
             "provider": "openai",
             "api_key_var": "OPENAI_API_KEY",
             "base_url_var": "OPENAI_BASE_URL",
-            "actual_model_name": "gpt-4",
+            "actual_model_name": "gpt-4.1",
         },
-        "gpt-4-turbo": {
+        "gpt-4.1-mini": {
             "provider": "openai",
             "api_key_var": "OPENAI_API_KEY",
             "base_url_var": "OPENAI_BASE_URL",
-            "actual_model_name": "gpt-4-turbo",
+            "actual_model_name": "gpt-4.1-mini",
         },
         "o3": {
             "provider": "openai",
@@ -48,11 +48,11 @@ class ModelConfig:
             "base_url_var": "OPENAI_BASE_URL",
             "actual_model_name": "o3",
         },
-        "o3-mini": {
+        "o4-mini": {
             "provider": "openai",
             "api_key_var": "OPENAI_API_KEY",
             "base_url_var": "OPENAI_BASE_URL",
-            "actual_model_name": "o3-mini",
+            "actual_model_name": "o4-mini",
         },
         # DeepSeek models
         "deepseek-chat": {
@@ -61,38 +61,58 @@ class ModelConfig:
             "base_url_var": "DEEPSEEK_BASE_URL",
             "actual_model_name": "deepseek-chat",
         },
-        "deepseek-coder": {
+        "deepseek-reasoner": {
             "provider": "deepseek",
             "api_key_var": "DEEPSEEK_API_KEY",
             "base_url_var": "DEEPSEEK_BASE_URL",
-            "actual_model_name": "deepseek-coder",
+            "actual_model_name": "deepseek-reasoner",
         },
         # Anthropic models
-        "claude-3-5-sonnet": {
+        "claude-3-7-sonnet": {
             "provider": "anthropic",
             "api_key_var": "ANTHROPIC_API_KEY",
             "base_url_var": "ANTHROPIC_BASE_URL",
-            "actual_model_name": "claude-3-5-sonnet-20241022",
+            "actual_model_name": "claude-3-7-sonnet-20250219",
         },
-        "claude-3-opus": {
+        "claude-4-sonnet": {
             "provider": "anthropic",
             "api_key_var": "ANTHROPIC_API_KEY",
             "base_url_var": "ANTHROPIC_BASE_URL",
-            "actual_model_name": "claude-3-opus-20240229",
+            "actual_model_name": "claude-sonnet-4-20250514",
+        },
+        "claude-4-opus": {
+            "provider": "anthropic",
+            "api_key_var": "ANTHROPIC_API_KEY",
+            "base_url_var": "ANTHROPIC_BASE_URL",
+            "actual_model_name": "claude-opus-4-20250514",
         },
         # Google models
-        "gemini-pro": {
+        "gemini-2.5-pro": {
             "provider": "google",
             "api_key_var": "GEMINI_API_KEY",
             "base_url_var": "GEMINI_BASE_URL",
-            "actual_model_name": "gemini-pro",
+            "actual_model_name": "gemini-2.5-pro",
         },
-        "gemini-1.5-pro": {
+        "gemini-2.5-flash": {
             "provider": "google",
             "api_key_var": "GEMINI_API_KEY",
             "base_url_var": "GEMINI_BASE_URL",
-            "actual_model_name": "gemini-1.5-pro",
+            "actual_model_name": "gemini-2.5-flash",
         },
+        # Moonshot models
+        "k2": {
+            "provider": "moonshot",
+            "api_key_var": "MOONSHOT_API_KEY",
+            "base_url_var": "MOONSHOT_BASE_URL",
+            "actual_model_name": "kimi-k2-0711-preview",
+        },
+        # Grok models
+        "grok-4": {
+            "provider": "moonshot",
+            "api_key_var": "GROK_API_KEY",
+            "base_url_var": "GROK_BASE_URL",
+            "actual_model_name": "grok-4-0709",
+        }
     }
 
     def __init__(self, model_name: str):
