@@ -27,6 +27,7 @@ from agents import (
     OpenAIChatCompletionsModel,
     RunConfig,
     Runner,
+    ItemHelpers,
     set_tracing_export_api_key,
 )
 from agents.mcp.server import MCPServerStdio
@@ -389,9 +390,12 @@ class NotionTaskManager(BaseTaskManager):
                                     logger.info(
                                         f"\n-- Calling Tool: {event.item.raw_item.name if hasattr(event.item, 'raw_item') else 'Unknown'}..."
                                     )
-                                elif event.item.type == "tool_call_output_item":
+                                # elif event.item.type == "tool_call_output_item":
+                                #     logger.info(f"-- Tool output: {event.item.output}")
+                                # elif event.item.type == "message_output_item":
+                                #     logger.info(f"-- Message output:\n {ItemHelpers.text_message_output(event.item)}")
+                                else:
                                     pass
-                                    # logger.info("-- Tool call completed.")
             
             logger.info(f"Total events received: {event_count}")
         except Exception as e:
@@ -465,8 +469,7 @@ class NotionTaskManager(BaseTaskManager):
                 wait_seconds = self.retry_backoff * attempt
                 logger.warning(
                     f"[Retry] Attempt {attempt}/{self.max_retries} failed with transient network error. "
-                    f"Waiting {wait_seconds}s before retrying…",
-                    flush=True,
+                    f"Waiting {wait_seconds}s before retrying…"
                 )
                 time.sleep(wait_seconds)
                 continue  # Retry

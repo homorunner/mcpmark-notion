@@ -21,6 +21,7 @@ from playwright.sync_api import (
 from src.base.state_manager import BaseStateManager
 from src.logger import get_logger
 from src.mcp_services.notion.notion_task_manager import NotionTask
+import re
 
 # Initialize logger
 logger = get_logger(__name__)
@@ -149,6 +150,23 @@ class NotionStateManager(BaseStateManager):
         compact = compact[-32:]
         return f"{compact[:8]}-{compact[8:12]}-{compact[12:16]}-{compact[16:20]}-{compact[20:]}"
 
+    def _get_slug_base(self, url: str) -> str:
+        """Returns the slug part without its trailing 32-char ID (hyphen separated)."""
+        slug = url.split("?", 1)[0].split("#", 1)[0].rstrip("/").split("/")[-1]
+        match = re.match(r"^(.*)-([0-9a-fA-F]{32})$", slug)
+        if match:
+            return match.group(1)
+        return slug
+
+    def _is_valid_duplicate_url(self, original_url: str, duplicated_url: str) -> bool:
+        """Checks whether duplicated_url looks like a Notion duplicate (original slug + '-N')."""
+        orig_base = self._get_slug_base(original_url)
+        dup_base = self._get_slug_base(duplicated_url)
+        if not dup_base.startswith(orig_base + "-"):
+            return False
+        suffix = dup_base[len(orig_base) + 1 :]
+        return suffix.isdigit()
+
     def _find_template_by_title(self, title: str) -> Optional[Tuple[str, str]]:
         """Finds a Notion page or database by its exact title."""
         try:
@@ -184,6 +202,8 @@ class NotionStateManager(BaseStateManager):
         new_title: Optional[str] = None,
         *,
         template_type: str = "page",
+        original_template_id: str,
+        template_title: str,
         wait_timeout: int = 180_000,
     ) -> str:
         """Duplicates the currently open Notion template using Playwright."""
@@ -206,6 +226,17 @@ class NotionStateManager(BaseStateManager):
             page.wait_for_url(lambda url: url != original_url, timeout=wait_timeout)
             
             duplicated_url = page.url
+            # Validate that the resulting URL is a genuine duplicate of the original template.
+            if not self._is_valid_duplicate_url(original_url, duplicated_url):
+                logger.error(
+                    "Unexpected URL after duplication – URL does not match expected duplicate pattern.\n  Original: %s\n  Observed: %s",
+                    original_url,
+                    duplicated_url,
+                )
+                # Attempt to clean up stray duplicate before propagating error.
+                self._cleanup_orphan_duplicate(original_template_id, template_title, template_type)
+                raise RuntimeError("Duplicate URL pattern mismatch – duplication likely failed")
+
             duplicated_template_id = self._extract_template_id_from_url(duplicated_url)
 
             if new_title:
@@ -215,6 +246,57 @@ class NotionStateManager(BaseStateManager):
         except PlaywrightTimeoutError as e:
             logger.error("Playwright timed out while duplicating template.")
             raise RuntimeError("Playwright timeout during duplication") from e
+
+    def _cleanup_orphan_duplicate(
+        self,
+        original_template_id: str,
+        template_title: str,
+        template_type: str,
+    ) -> bool:
+        """Finds and archives a stray duplicate ("orphan") that matches pattern 'Title (n)'.
+
+        Returns True if at least one orphan duplicate was archived.
+        """
+        try:
+            response = self.notion_client.search(
+                query=template_title,
+                filter={"property": "object", "value": template_type},
+            )
+
+            title_regex = re.compile(rf"^{re.escape(template_title)}\s*\((\d+)\)$")
+
+            def _extract_title(res):
+                if template_type == "page":
+                    props = res.get("properties", {})
+                    title_prop = props.get("title", {}).get("title") or props.get("Name", {}).get("title")
+                    return "".join(t.get("plain_text", "") for t in (title_prop or []))
+                else:
+                    title_prop = res.get("title", [])
+                    return "".join(t.get("plain_text", "") for t in title_prop)
+
+            archived_any = False
+            for res in response.get("results", []):
+                if res.get("id") == original_template_id:
+                    continue  # skip the source template
+
+                title_plain = _extract_title(res).strip()
+                if not title_regex.match(title_plain):
+                    continue  # not a numbered duplicate
+
+                dup_id = res["id"]
+                try:
+                    if template_type == "page":
+                        self.notion_client.pages.update(page_id=dup_id, archived=True)
+                    else:
+                        self.notion_client.databases.update(database_id=dup_id, archived=True)
+                    logger.info("Archived orphan duplicate (%s): %s", template_type, dup_id)
+                    archived_any = True
+                except Exception as exc:
+                    logger.warning("Failed to archive orphan %s %s: %s", template_type, dup_id, exc)
+            return archived_any
+        except Exception as exc:
+            logger.warning("Error while attempting to cleanup orphan duplicate: %s", exc)
+            return False
 
     def _duplicate_template_for_task(
         self,
@@ -243,7 +325,7 @@ class NotionStateManager(BaseStateManager):
                     page = context.new_page()
 
                     logger.info("- Navigating to template for %s...", category)
-                    page.goto(template_url, wait_until="load")
+                    page.goto(template_url, wait_until="load", timeout=60_000)
                     context.storage_state(path=str(self.state_file))
 
                     duplicate_title = f"[EVAL IN PROGRESS - {self.model_name.upper()}] {task_name}"
@@ -254,15 +336,16 @@ class NotionStateManager(BaseStateManager):
                         page,
                         duplicate_title,
                         template_type=template_type,
+                        original_template_id=template_id,
+                        template_title=self._category_to_template_title(category),
                         wait_timeout=wait_timeout,
                     )
                     duplicated_url = page.url
-                    logger.info("✓ Template duplicated successfully on attempt %d:", attempt + 1)
-                    logger.info("  → Page URL: %s", duplicated_url)
-                    logger.info("  → Renamed to: %s", duplicate_title)
+                    # Validate URL pattern again at this higher level (should already be validated inside).
                     context.storage_state(path=str(self.state_file))
                     return duplicated_url, duplicated_id
             except Exception as e:
+                # No additional cleanup here—handled inside _duplicate_current_template.
                 last_exc = e
                 if attempt < max_retries:
                     logger.warning("⚠️ Duplication attempt %d failed: %s. Retrying...", attempt + 1, e)
