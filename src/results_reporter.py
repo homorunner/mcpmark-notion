@@ -60,6 +60,7 @@ class EvaluationReport:
     successful_tasks: int
     failed_tasks: int
     task_results: List[TaskResult]
+    tasks_filter: Optional[str] = None
 
     @property
     def success_rate(self) -> float:
@@ -199,6 +200,7 @@ class ResultsReporter:
                 "success_rate": report.success_rate,
             },
             "category_stats": report.get_category_stats(),
+            "tasks_filter": report.tasks_filter,
             "task_results": [asdict(result) for result in report.task_results],
         }
 
@@ -238,6 +240,10 @@ class ResultsReporter:
 
         with output_path.open("w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
+            # Write metadata row for task filter
+            writer.writerow(["Tasks Filter", report.tasks_filter or ""])
+            writer.writerow([])
+            # Header
             writer.writerow(
                 ["Category", "Total Tasks", "Successful", "Failed", "Success Rate (%)", "Avg Execution Time (s)"]
             )
