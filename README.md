@@ -35,6 +35,12 @@ export MCPBENCH_MODEL_NAME="your_model_name"   # e.g. gpt-4o
 export OPENAI_API_KEY="your_openai_key"
 ```
 
+For running task verification scripts directly (e.g., `python tasks/habit_tracker/task_1/verify.py`) or the test suite, make sure the repository root is on your Python module search path:
+
+```bash
+export PYTHONPATH="$(pwd):${PYTHONPATH}"
+```
+
 ---
 
 ## 3 · Installation
@@ -70,7 +76,6 @@ python src/pipeline.py --tasks online_resume/task_1 --model-name $MCPBENCH_MODEL
 ```
 
 Results are written to `./results/` (JSON + CSV).  
-Open the generated CSV in any spreadsheet tool for a quick overview.
 
 ---
 
