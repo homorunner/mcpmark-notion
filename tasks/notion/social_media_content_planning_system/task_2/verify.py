@@ -23,14 +23,10 @@ def verify(notion: Client, main_id: str = None) -> bool:
     db_title = "Social Media Content Planning System"
     database_id = None
     if main_id:
-        found_id, object_type = notion_utils.find_page_or_database_by_id(notion, main_id)
-        if found_id and object_type == 'database':
-            database_id = found_id
-    
+        # main_id is now always a page id
+        database_id = notion_utils.find_database_in_block(notion, main_id, db_title)
     if not database_id:
-        database_id = notion_utils.find_database(notion, db_title)
-    if not database_id:
-        print(f"Error: Database '{db_title}' not found.", file=sys.stderr)
+        print(f"Error: Database '{db_title}' not found under the provided page.", file=sys.stderr)
         return False
 
     try:
