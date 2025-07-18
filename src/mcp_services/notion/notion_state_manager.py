@@ -31,6 +31,8 @@ logger = get_logger(__name__)
 PAGE_MENU_BUTTON_SELECTOR = '[data-testid="more-button"], div.notion-topbar-more-button, [aria-label="More"], button[aria-label="More"]'
 DUPLICATE_MENU_ITEM_SELECTOR = 'text="Duplicate"'
 DUPLICATE_WITH_CONTENT_SELECTOR = 'text="Duplicate with content"'
+MOVE_TO_MENU_ITEM_SELECTOR = 'text="Move to"'
+MOVE_TO_SEARCH_INPUT_SELECTOR = 'input[placeholder*="Move page to"], textarea[placeholder*="Move page to"]'
 
 
 class NotionStateManager(BaseStateManager):
@@ -44,6 +46,7 @@ class NotionStateManager(BaseStateManager):
         model_name: str,
         headless: bool = True,
         browser: str = "firefox",
+        eval_parent_page_title: str = "MCPBench Eval Hub",
     ):
         """
         Initializes the Notion state manager.
@@ -66,6 +69,8 @@ class NotionStateManager(BaseStateManager):
         self.headless = headless
         self.state_file = Path("notion_state.json")
         self.model_name = model_name
+        # Parent page under which duplicated pages should be moved for evaluation
+        self.eval_parent_page_title = eval_parent_page_title
 
     def initialize(self, **kwargs):
         """Initializes the state manager (handled in __init__ for this implementation)."""
@@ -123,6 +128,67 @@ class NotionStateManager(BaseStateManager):
             )
         except Exception as e:
             logger.error("Failed to rename page via API: %s", e)
+
+    # ------------------------------------------------------------------
+    # Playwright helpers
+    # ------------------------------------------------------------------
+
+    def _move_current_page_to_env(self, page: Page, *, wait_timeout: int = 60_000) -> None:
+        """Moves the currently open page into the designated evaluation parent page.
+
+        This operation is done via Playwright UI automation because the Notion API
+        does not yet expose a direct "move" endpoint for pages. It relies on the
+        following sequence:
+
+        1. Open the page action menu (same selector as duplication).
+        2. Choose the "Move to" menu item.
+        3. In the search field that appears (placeholder starts with
+           "Move page to"), type the target parent page title.
+        4. Click the matching search result to complete the move.
+        """
+
+        logger.info("- Moving duplicated page to evaluation parent '%s'...", self.eval_parent_page_title)
+
+        try:
+            # Step 1: Open the page menu
+            page.wait_for_selector(PAGE_MENU_BUTTON_SELECTOR, state="visible", timeout=30_000)
+            page.click(PAGE_MENU_BUTTON_SELECTOR)
+
+            # Step 2: Select "Move to"
+            page.hover(MOVE_TO_MENU_ITEM_SELECTOR)
+            page.click(MOVE_TO_MENU_ITEM_SELECTOR)
+
+            # Step 3: Fill the destination title
+            page.wait_for_selector(MOVE_TO_SEARCH_INPUT_SELECTOR, state="visible", timeout=15_000)
+
+            # Ensure focus then type the destination title – using type() triggers
+            # key events Notion relies on for search filtering.
+            search_input = page.locator(MOVE_TO_SEARCH_INPUT_SELECTOR).first
+            search_input.click()
+            search_input.fill("")  # Clear any residual text (safety)
+            search_input.type(self.eval_parent_page_title, delay=50)
+
+            # Step 4: Wait for the search result matching the page title, then click it
+            # Selector for the menu item row – ensure we click the outer container, not a nested <div>
+            result_selector = (
+                f'div[role="menuitem"]:has-text("{self.eval_parent_page_title}")'
+            )
+            page.wait_for_selector(result_selector, state="visible", timeout=wait_timeout)
+            page.locator(result_selector).first.click(force=True)
+
+            # Wait for the dialog to disappear – indicates move finished
+            page.wait_for_selector(MOVE_TO_SEARCH_INPUT_SELECTOR, state="detached", timeout=wait_timeout)
+
+            # Give Notion a brief moment to process the move
+            time.sleep(1)
+            logger.info("✅ Page moved to '%s' successfully.", self.eval_parent_page_title)
+        except PlaywrightTimeoutError as e:
+            logger.error("Playwright timed out while moving page to evaluation parent – move may have failed.")
+            raise RuntimeError("Playwright timeout during move-to operation") from e
+        except Exception as exc:
+            logger.error("Unexpected error during move-to operation: %s", exc)
+            # Propagate the error to allow retry logic at higher level if necessary
+            raise
 
     def _category_to_template_title(self, category: str) -> str:
         """Converts a category name to a capitalized template title."""
@@ -210,6 +276,7 @@ class NotionStateManager(BaseStateManager):
 
             if new_title:
                 self._rename_template_via_api(duplicated_template_id, new_title)
+                self._move_current_page_to_env(page, wait_timeout=wait_timeout)
 
             return duplicated_template_id
         except PlaywrightTimeoutError as e:
@@ -282,7 +349,7 @@ class NotionStateManager(BaseStateManager):
             try:
                 with sync_playwright() as p:
                     browser_type = getattr(p, self.browser_name)
-                    browser: Browser = browser_type.launch(headless=self.headless)
+                    browser: Browser = browser_type.launch(headless=False)
                     context = browser.new_context(storage_state=str(self.state_file))
                     page = context.new_page()
 
