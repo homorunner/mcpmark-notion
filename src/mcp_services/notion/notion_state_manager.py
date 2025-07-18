@@ -4,7 +4,7 @@ Notion State Manager for MCPBench
 =================================
 
 This module handles the duplication and management of Notion templates
-(pages and databases) for consistent task evaluation using Playwright automation.
+Pages for consistent task evaluation using Playwright automation.
 """
 import os
 import time
@@ -81,20 +81,13 @@ class NotionStateManager(BaseStateManager):
             return False
 
         try:
-            # Attempt to archive as a page first, then as a database
+            # Since templates are guaranteed to be pages, archive directly via the Pages API.
             self.notion_client.pages.update(page_id=template_id, archived=True)
             logger.info("Archived page template: %s", template_id)
             return True
-        except Exception:
-            try:
-                self.notion_client.databases.update(
-                    database_id=template_id, archived=True
-                )
-                logger.info("Archived database template: %s", template_id)
-                return True
-            except Exception as e:
-                logger.error("Failed to archive template %s: %s", template_id, e)
-                return False
+        except Exception as e:
+            logger.error("Failed to archive template %s: %s", template_id, e)
+            return False
 
     def set_up(self, task: NotionTask) -> bool:
         """
@@ -121,22 +114,15 @@ class NotionStateManager(BaseStateManager):
             logger.error("Failed to duplicate template for %s: %s", task.name, e)
             return False
 
-    def _rename_template_via_api(
-        self, template_id: str, new_title: str, template_type: str
-    ) -> None:
-        """Renames a Notion page or database using the API."""
+    def _rename_template_via_api(self, template_id: str, new_title: str) -> None:
+        """Renames a Notion page using the API."""
         try:
-            if template_type == "page":
-                self.notion_client.pages.update(
-                    page_id=template_id,
-                    properties={"title": {"title": [{"text": {"content": new_title}}]}},
-                )
-            else:
-                self.notion_client.databases.update(
-                    database_id=template_id, title=[{"text": {"content": new_title}}]
-                )
+            self.notion_client.pages.update(
+                page_id=template_id,
+                properties={"title": {"title": [{"text": {"content": new_title}}]}},
+            )
         except Exception as e:
-            logger.error("Failed to rename %s via API: %s", template_type, e)
+            logger.error("Failed to rename page via API: %s", e)
 
     def _category_to_template_title(self, category: str) -> str:
         """Converts a category name to a capitalized template title."""
@@ -169,40 +155,25 @@ class NotionStateManager(BaseStateManager):
         return suffix.isdigit()
 
     def _find_template_by_title(self, title: str) -> Optional[Tuple[str, str]]:
-        """Finds a Notion page or database by its exact title."""
+        """Finds a Notion page by its exact title"""
         try:
-            # Search for pages first
             response = self.notion_client.search(query=title, filter={"property": "object", "value": "page"})
             for result in response.get("results", []):
                 props = result.get("properties", {})
                 title_prop = props.get("title", {}).get("title") or props.get("Name", {}).get("title")
                 if title_prop and "".join(t.get("plain_text", "") for t in title_prop).strip() == title:
                     return result.get("id"), result.get("url")
-
-            # Then search for databases
-            response = self.notion_client.search(query=title, filter={"property": "object", "value": "database"})
-            for result in response.get("results", []):
-                title_prop = result.get("title", [])
-                if title_prop and "".join(t.get("plain_text", "") for t in title_prop).strip() == title:
-                    return result.get("id"), result.get("url")
         except Exception as e:
             logger.error("Error searching for template '%s': %s", title, e)
         return None
 
-    def _detect_template_type(self, template_id: str) -> str:
-        """Detects whether a template is a page or a database."""
-        try:
-            self.notion_client.databases.retrieve(database_id=template_id)
-            return "database"
-        except Exception:
-            return "page"
+    # NOTE: Template type detection logic has been removed because all templates are pages.
 
     def _duplicate_current_template(
         self,
         page: Page,
         new_title: Optional[str] = None,
         *,
-        template_type: str = "page",
         original_template_id: str,
         template_title: str,
         wait_timeout: int = 180_000,
@@ -217,15 +188,12 @@ class NotionStateManager(BaseStateManager):
             page.hover(DUPLICATE_MENU_ITEM_SELECTOR)
             page.click(DUPLICATE_MENU_ITEM_SELECTOR)
 
-            if template_type == "database":
-                logger.info("- Selecting 'Duplicate with content' for the database...")
-                page.wait_for_selector(DUPLICATE_WITH_CONTENT_SELECTOR, timeout=30_000)
-                page.click(DUPLICATE_WITH_CONTENT_SELECTOR)
-
             original_url = page.url
             logger.info("- Waiting for duplicated template to load (up to %.1f s)...", wait_timeout / 1000)
             page.wait_for_url(lambda url: url != original_url, timeout=wait_timeout)
             
+            # wait for the page to fully load
+            time.sleep(1)
             duplicated_url = page.url
             # Validate that the resulting URL is a genuine duplicate of the original template.
             if not self._is_valid_duplicate_url(original_url, duplicated_url):
@@ -235,13 +203,13 @@ class NotionStateManager(BaseStateManager):
                     duplicated_url,
                 )
                 # Attempt to clean up stray duplicate before propagating error.
-                self._cleanup_orphan_duplicate(original_template_id, template_title, template_type)
+                self._cleanup_orphan_duplicate(original_template_id, template_title)
                 raise RuntimeError("Duplicate URL pattern mismatch – duplication likely failed")
 
             duplicated_template_id = self._extract_template_id_from_url(duplicated_url)
 
             if new_title:
-                self._rename_template_via_api(duplicated_template_id, new_title, template_type)
+                self._rename_template_via_api(duplicated_template_id, new_title)
 
             return duplicated_template_id
         except PlaywrightTimeoutError as e:
@@ -252,7 +220,6 @@ class NotionStateManager(BaseStateManager):
         self,
         original_template_id: str,
         template_title: str,
-        template_type: str,
     ) -> bool:
         """Finds and archives a stray duplicate ("orphan") that matches pattern 'Title (n)'.
 
@@ -261,20 +228,16 @@ class NotionStateManager(BaseStateManager):
         try:
             response = self.notion_client.search(
                 query=template_title,
-                filter={"property": "object", "value": template_type},
+                filter={"property": "object", "value": "page"},
             )
 
             # Only consider exactly one copy "Title (1)".
             title_regex = re.compile(rf"^{re.escape(template_title)}\s*\(1\)$")
 
             def _extract_title(res):
-                if template_type == "page":
-                    props = res.get("properties", {})
-                    title_prop = props.get("title", {}).get("title") or props.get("Name", {}).get("title")
-                    return "".join(t.get("plain_text", "") for t in (title_prop or []))
-                else:
-                    title_prop = res.get("title", [])
-                    return "".join(t.get("plain_text", "") for t in title_prop)
+                props = res.get("properties", {})
+                title_prop = props.get("title", {}).get("title") or props.get("Name", {}).get("title")
+                return "".join(t.get("plain_text", "") for t in (title_prop or []))
 
             archived_any = False
             for res in response.get("results", []):
@@ -287,14 +250,11 @@ class NotionStateManager(BaseStateManager):
 
                 dup_id = res["id"]
                 try:
-                    if template_type == "page":
-                        self.notion_client.pages.update(page_id=dup_id, archived=True)
-                    else:
-                        self.notion_client.databases.update(database_id=dup_id, archived=True)
-                    logger.info("Archived orphan duplicate (%s): %s", template_type, dup_id)
+                    self.notion_client.pages.update(page_id=dup_id, archived=True)
+                    logger.info("Archived orphan duplicate (%s): %s", "page", dup_id)
                     archived_any = True
                 except Exception as exc:
-                    logger.warning("Failed to archive orphan %s %s: %s", template_type, dup_id, exc)
+                    logger.warning("Failed to archive orphan page %s: %s", dup_id, exc)
             return archived_any
         except Exception as exc:
             logger.warning("Error while attempting to cleanup orphan duplicate: %s", exc)
@@ -334,12 +294,10 @@ class NotionStateManager(BaseStateManager):
 
                     duplicate_title = f"[EVAL IN PROGRESS - {self.model_name.upper()}] {task_name}"
                     template_id = self._extract_template_id_from_url(template_url)
-                    template_type = self._detect_template_type(template_id)
 
                     duplicated_id = self._duplicate_current_template(
                         page,
                         duplicate_title,
-                        template_type=template_type,
                         original_template_id=template_id,
                         template_title=self._category_to_template_title(category),
                         wait_timeout=wait_timeout,
