@@ -30,23 +30,25 @@ class ServiceConfig:
     def __init__(
         self,
         service_name: str,
-        api_key_var: str,
+        api_key_var: Optional[str] = None,
         additional_vars: Optional[Dict[str, str]] = None,
     ):
         self.service_name = service_name
         self.api_key_var = api_key_var
         self.additional_vars = additional_vars or {}
 
-        # Load environment variables from .env file
+        # Load environment variables from .mcp_env file
         load_dotenv(dotenv_path=".mcp_env", override=False)
 
-        # Load the API key
-        self.api_key = os.getenv(api_key_var)
-        if not self.api_key:
-            raise ValueError(f"Missing required environment variable: {api_key_var}")
+        # Primary API key (optional for services that define multiple keys explicitly)
+        self.api_key: Optional[str] = None
+        if api_key_var is not None:
+            self.api_key = os.getenv(api_key_var)
+            if not self.api_key:
+                raise ValueError(f"Missing required environment variable: {api_key_var}")
 
-        # Load any additional configuration variables
-        self.config = {}
+        # Load any additional configuration variables (mandatory)
+        self.config: Dict[str, str] = {}
         for var_name, env_var in self.additional_vars.items():
             value = os.getenv(env_var)
             if value is None:
@@ -84,7 +86,7 @@ class NotionServiceFactory(ServiceFactory):
             model_name=kwargs.get("model_name"),
             api_key=kwargs.get("api_key"),
             base_url=kwargs.get("base_url"),
-            notion_key=config.api_key,
+            notion_key=config.config["eval_api_key"],
             timeout=kwargs.get("timeout", 600),
         )
 
@@ -92,10 +94,12 @@ class NotionServiceFactory(ServiceFactory):
         from src.mcp_services.notion.notion_state_manager import NotionStateManager
 
         return NotionStateManager(
-            notion_key=config.api_key,
+            source_notion_key=config.config["source_api_key"],
+            eval_notion_key=config.config["eval_api_key"],
             model_name=kwargs.get("model_name", "default"),
             headless=kwargs.get("headless", True),
             browser=kwargs.get("browser", "firefox"),
+            eval_parent_page_title=config.config["eval_parent_page_title"],
         )
 
     def create_login_helper(self, config: ServiceConfig, **kwargs) -> BaseLoginHelper:
@@ -142,7 +146,15 @@ class MCPServiceFactory:
     """
 
     SERVICE_CONFIGS = {
-        "notion": {"api_key_var": "NOTION_API_KEY", "additional_vars": {}},
+        # Notion now uses two distinct keys: SOURCE & EVAL.
+        "notion": {
+            "api_key_var": None,  # handled via additional_vars
+            "additional_vars": {
+                "eval_api_key": "EVAL_NOTION_API_KEY",
+                "source_api_key": "SOURCE_NOTION_API_KEY",
+                "eval_parent_page_title": "EVAL_PARENT_PAGE_TITLE",
+            },
+        },
         "github": {
             "api_key_var": "GITHUB_TOKEN",
             "additional_vars": {"username": "GITHUB_USERNAME", "repo": "GITHUB_REPO"},

@@ -341,7 +341,7 @@ def main():
 
     args = parser.parse_args()
 
-    # Load environment variables from .env file
+    # Load environment variables from .mcp_env file
     load_dotenv(dotenv_path=".mcp_env", override=True)
 
     # Initialize and run the evaluation pipeline

@@ -42,7 +42,8 @@ class NotionStateManager(BaseStateManager):
 
     def __init__(
         self,
-        notion_key: str,
+        source_notion_key: str,
+        eval_notion_key: str,
         model_name: str,
         headless: bool = True,
         browser: str = "firefox",
@@ -65,7 +66,14 @@ class NotionStateManager(BaseStateManager):
             )
 
         self.browser_name = browser
-        self.notion_client = Client(auth=notion_key)
+
+        # Initialize separate Notion clients with provided keys
+        if not source_notion_key or not eval_notion_key:
+            raise ValueError("Both source_notion_key and eval_notion_key must be provided to NotionStateManager.")
+
+        self.source_notion_client = Client(auth=source_notion_key)
+        self.eval_notion_client = Client(auth=eval_notion_key)
+
         self.headless = headless
         self.state_file = Path("notion_state.json")
         self.model_name = model_name
@@ -87,7 +95,8 @@ class NotionStateManager(BaseStateManager):
 
         try:
             # Since templates are guaranteed to be pages, archive directly via the Pages API.
-            self.notion_client.pages.update(page_id=template_id, archived=True)
+            # This operates on the duplicated page in the evaluation workspace.
+            self.eval_notion_client.pages.update(page_id=template_id, archived=True)
             logger.info("Archived page template: %s", template_id)
             return True
         except Exception as e:
@@ -122,7 +131,7 @@ class NotionStateManager(BaseStateManager):
     def _rename_template_via_api(self, template_id: str, new_title: str) -> None:
         """Renames a Notion page using the API."""
         try:
-            self.notion_client.pages.update(
+            self.source_notion_client.pages.update(
                 page_id=template_id,
                 properties={"title": {"title": [{"text": {"content": new_title}}]}},
             )
@@ -223,7 +232,7 @@ class NotionStateManager(BaseStateManager):
     def _find_template_by_title(self, title: str) -> Optional[Tuple[str, str]]:
         """Finds a Notion page by its exact title"""
         try:
-            response = self.notion_client.search(query=title, filter={"property": "object", "value": "page"})
+            response = self.source_notion_client.search(query=title, filter={"property": "object", "value": "page"})
             for result in response.get("results", []):
                 props = result.get("properties", {})
                 title_prop = props.get("title", {}).get("title") or props.get("Name", {}).get("title")
@@ -293,7 +302,7 @@ class NotionStateManager(BaseStateManager):
         Returns True if at least one orphan duplicate was archived.
         """
         try:
-            response = self.notion_client.search(
+            response = self.source_notion_client.search(
                 query=template_title,
                 filter={"property": "object", "value": "page"},
             )
@@ -317,7 +326,7 @@ class NotionStateManager(BaseStateManager):
 
                 dup_id = res["id"]
                 try:
-                    self.notion_client.pages.update(page_id=dup_id, archived=True)
+                    self.source_notion_client.pages.update(page_id=dup_id, archived=True)
                     logger.info("Archived orphan duplicate (%s): %s", "page", dup_id)
                     archived_any = True
                 except Exception as exc:
@@ -349,7 +358,7 @@ class NotionStateManager(BaseStateManager):
             try:
                 with sync_playwright() as p:
                     browser_type = getattr(p, self.browser_name)
-                    browser: Browser = browser_type.launch(headless=False)
+                    browser: Browser = browser_type.launch(headless=self.headless)
                     context = browser.new_context(storage_state=str(self.state_file))
                     page = context.new_page()
 

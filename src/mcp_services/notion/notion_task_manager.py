@@ -330,13 +330,17 @@ class NotionTaskManager(BaseTaskManager):
     
     async def _create_mcp_server(self) -> MCPServerStdio:
         """Create and return an MCP server connection for Notion."""
+        # The MCP server must use the evaluation workspace API key provided during initialization.
+        eval_key = self.notion_key
+        if not eval_key:
+            raise ValueError("Evaluation Notion API key (eval_notion_key) was not provided to NotionTaskManager.")
         return MCPServerStdio(
             params={
                 "command": "npx",
                 "args": ["-y", "@notionhq/notion-mcp-server"],
                 "env": {
                     "OPENAPI_MCP_HEADERS": (
-                        '{"Authorization": "Bearer ' + self.notion_key + '", '
+                        '{"Authorization": "Bearer ' + eval_key + '", '
                         '"Notion-Version": "2022-06-28"}'
                     )
                 },
