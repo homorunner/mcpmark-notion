@@ -5,6 +5,7 @@ results
 materials
 scripts
 .nfs*
+.mcp_env
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

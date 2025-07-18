@@ -5,8 +5,7 @@ from dotenv import load_dotenv
 
 def get_notion_client():
     # Construct the absolute path to the .env file in the project root
-    dotenv_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
-    load_dotenv(dotenv_path=dotenv_path)
+    load_dotenv(dotenv_path=".mcp_env")
     api_key = os.environ.get("NOTION_API_KEY")
     if not api_key:
         print("Error: NOTION_API_KEY not found in environment variables.", file=sys.stderr)

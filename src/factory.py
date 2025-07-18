@@ -38,7 +38,7 @@ class ServiceConfig:
         self.additional_vars = additional_vars or {}
 
         # Load environment variables from .env file
-        load_dotenv(override=False)
+        load_dotenv(dotenv_path=".mcp_env", override=False)
 
         # Load the API key
         self.api_key = os.getenv(api_key_var)
