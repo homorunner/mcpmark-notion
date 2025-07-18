@@ -58,27 +58,27 @@ POSTGRES_USERNAME="your-postgres-username"
 
 # Model Providers (set only those you need)
 ## Google Gemini
-GEMINI_BASE_URL="https://aihubmix.com/v1"
+GEMINI_BASE_URL="https://your-gemini-base-url.com/v1"
 GEMINI_API_KEY="your-gemini-api-key"
 
 ## DeepSeek
-DEEPSEEK_BASE_URL="https://aihubmix.com/v1"
+DEEPSEEK_BASE_URL="https://your-deepseek-base-url.com/v1"
 DEEPSEEK_API_KEY="your-deepseek-api-key"
 
 ## OpenAI
-OPENAI_BASE_URL="https://aihubmix.com/v1"
+OPENAI_BASE_URL="https://your-openai-base-url.com/v1"
 OPENAI_API_KEY="your-openai-api-key"
 
 ## Anthropic
-ANTHROPIC_BASE_URL="https://aihubmix.com/v1"
+ANTHROPIC_BASE_URL="https://your-anthropic-base-url.com/v1"
 ANTHROPIC_API_KEY="your-anthropic-api-key"
 
 ## Moonshot
-MOONSHOT_BASE_URL="https://aihubmix.com/v1"
+MOONSHOT_BASE_URL="https://your-moonshot-base-url.com/v1"
 MOONSHOT_API_KEY="your-moonshot-api-key"
 
 ## xAI
-XAI_BASE_URL="https://api.x.ai/v1"
+XAI_BASE_URL="https://your-xai-base-url.com/v1"
 XAI_API_KEY="your-xai-api-key"
 ```
 
