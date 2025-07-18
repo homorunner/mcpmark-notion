@@ -189,8 +189,7 @@ class NotionStateManager(BaseStateManager):
             page.wait_for_selector(MOVE_TO_SEARCH_INPUT_SELECTOR, state="detached", timeout=wait_timeout)
 
             # Give Notion a brief moment to process the move
-            time.sleep(1)
-            logger.info("✅ Page moved to '%s' successfully.", self.eval_parent_page_title)
+            time.sleep(3)
         except PlaywrightTimeoutError as e:
             logger.error("Playwright timed out while moving page to evaluation parent – move may have failed.")
             raise RuntimeError("Playwright timeout during move-to operation") from e
@@ -286,6 +285,16 @@ class NotionStateManager(BaseStateManager):
             if new_title:
                 self._rename_template_via_api(duplicated_template_id, new_title)
                 self._move_current_page_to_env(page, wait_timeout=wait_timeout)
+                # verify whether the page is moved to the evaluation parent page
+                try:
+                    result = self.eval_notion_client.pages.retrieve(page_id=duplicated_template_id)
+                    if not result or not isinstance(result, dict):
+                        logger.error("Playwright move to error: Notion API did not return a valid page dict after move.")
+                        raise RuntimeError("Playwright move to error: Notion API did not return a valid page dict after move.")
+                    logger.info("✅ Page moved to '%s' successfully.", self.eval_parent_page_title)
+                except Exception as move_exc:
+                    logger.error(f"Playwright move to error: {move_exc}")
+                    raise RuntimeError("Playwright move to error: Notion client failed to retrieve page after move.") from move_exc
 
             return duplicated_template_id
         except PlaywrightTimeoutError as e:

@@ -263,8 +263,6 @@ class NotionTaskManager(BaseTaskManager):
                 # Run the task
                 result = self.run_single_task_file(temp_task_path, timeout=self.timeout)
 
-                import pdb; pdb.set_trace()
-
                 # If MCP network error after all retries, bubble up immediately
                 if not result["success"] and "Error invoking MCP" in result.get("error", ""):
                     execution_time = time.time() - start_time
