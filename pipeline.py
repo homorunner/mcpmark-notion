@@ -21,6 +21,17 @@ from src.factory import MCPServiceFactory
 from src.logger import get_logger
 from src.model_config import ModelConfig
 from src.results_reporter import EvaluationReport, ResultsReporter, TaskResult
+import shutil
+
+# ------------------------------------------------------------------
+# Retryable pipeline errors – tasks that previously failed with these
+# error messages will be re-executed when resuming the pipeline. Extend
+# this list to add new retryable error types.
+# ------------------------------------------------------------------
+PIPELINE_RETRY_ERRORS: List[str] = [
+    "State Duplication Error",
+    "MCP Network Error",
+]
 
 # Initialize logger
 logger = get_logger(__name__)
@@ -176,10 +187,33 @@ class EvaluationPipeline:
         for task in tasks:
             # ------------------------ Resume check ------------------------
             existing_result = self._load_latest_task_result(task)
-            if existing_result:
+
+            # ------------------------------------------------------
+            # Decide whether to skip or retry this task based on the
+            # previous result and retryable pipeline errors.
+            # ------------------------------------------------------
+            retry_due_to_error = (
+                existing_result is not None
+                and not existing_result.success
+                and existing_result.error_message in PIPELINE_RETRY_ERRORS
+            )
+
+            if existing_result and not retry_due_to_error:
+                # Existing result is either successful or failed with a non-retryable error – skip.
                 logger.info("↩️  Skipping already-completed task (resume): %s", task.name)
                 results.append(existing_result)
                 continue
+
+            if retry_due_to_error:
+                # Clean previous artifacts so that new results fully replace them.
+                task_output_dir = self._get_task_output_dir(task)
+                if task_output_dir.exists():
+                    shutil.rmtree(task_output_dir)
+                logger.info(
+                    "🔄 Retrying task due to pipeline error (%s): %s",
+                    existing_result.error_message,
+                    task.name,
+                )
 
             # -------------------- Execute new task -----------------------
             task_start = time.time()
