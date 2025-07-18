@@ -72,13 +72,8 @@ class EvaluationPipeline:
         # ------------------------------------------------------------------
         # Output directory handling
         # ------------------------------------------------------------------
-        self.exp_name = exp_name  # Optional experiment folder name
-        # Base directory for all outputs (default: ./results)
-        self.output_dir = Path(output_dir or "./results")
-
-        # Directory that groups all tasks for this run
-        model_slug = self.actual_model_name.replace(".", "-")
-        self.base_experiment_dir = self.output_dir / self.exp_name / f"{service}_{model_slug}"
+        model_slug = self.model.replace(".", "-")
+        self.base_experiment_dir = output_dir / exp_name / f"{service}_{model_slug}"
         self.base_experiment_dir.mkdir(parents=True, exist_ok=True)
 
     def _get_task_output_dir(self, task) -> Path:
@@ -363,15 +358,12 @@ def main():
     report = pipeline.run_evaluation(args.tasks)
 
     # Create a unique output directory for the report
-    sanitized_model_name = (args.model or "unknown_model").replace(".", "-")
-    output_dir = args.output_dir / args.exp_name / f"{args.service}_{sanitized_model_name}"
-    output_dir.mkdir(parents=True, exist_ok=True)
     sanitized_task_filter = args.tasks.replace("/", "_")
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    json_path = output_dir / f"evaluation_report_{sanitized_task_filter}_{timestamp}.json"
-    csv_path = output_dir / f"evaluation_results_{sanitized_task_filter}_{timestamp}.csv"
-    summary_path = output_dir / f"evaluation_summary_{sanitized_task_filter}_{timestamp}.csv"
+    json_path = pipeline.base_experiment_dir / f"evaluation_report_{sanitized_task_filter}_{timestamp}.json"
+    csv_path = pipeline.base_experiment_dir / f"evaluation_results_{sanitized_task_filter}_{timestamp}.csv"
+    summary_path = pipeline.base_experiment_dir / f"evaluation_summary_{sanitized_task_filter}_{timestamp}.csv"
 
     # Save the evaluation reports
     if not args.no_json:
