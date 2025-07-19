@@ -103,11 +103,15 @@ pip install -r requirements.txt
 ## 4 · Authenticate with Notion
 
 ```bash
-# Choose browser engine: firefox | chromium
-python src/notion_login.py --headless --browser firefox
-# Verify login succeeded
+# First, run the Notion login helper with your preferred browser
+python src/mcp_services/notion/notion_login_helper.py --browser {firefox|chromium}
+
+# If login is successful, a cookie file `notion_state.json` will be generated in the project root
+# Verify the login was successful
 python tests/test_login.py
 ```
+
+The verification script will tell you which browser is working properly. The pipeline defaults to using **chromium**. Our pipeline has been **fully tested on macOS and Linux**.
 
 ---
 

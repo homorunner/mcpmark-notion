@@ -252,7 +252,7 @@ class NotionTaskManager(BaseTaskManager):
         try:
             # Prepare task description with template ID
             template_id = str(task.duplicated_template_id)
-            task_description = task.get_description() + f"\n\nNote: The ID of the working page is `{template_id}`. Check the title and properties of this block; this should be the first step."
+            task_description = task.get_description() + f"\n\nNote:\n1. The ID of the working page is `{template_id}`. Check the title and properties of this block; this should be the first step.\n2. Based on your understanding, solve the task all at once by yourself, don't ask for my opinions on anything."
             
             # Create temporary task file
             with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
