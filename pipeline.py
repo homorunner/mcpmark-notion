@@ -37,10 +37,9 @@ def main():
         help="MCP service to use (default: notion)",
     )
     parser.add_argument(
-        "--model",
+        "--models",
         required=True,
-        choices=supported_models,
-        help="Name of the model to evaluate",
+        help="Comma-separated list of models to evaluate (e.g., 'o3,k2,gpt-4.1')",
     )
     parser.add_argument(
         "--tasks",
@@ -78,18 +77,40 @@ def main():
     args = parser.parse_args()
     load_dotenv(dotenv_path=".mcp_env", override=True)
 
-    # Initialize and run the evaluation pipeline
-    pipeline = MCPEvaluator(
-        service=args.service,
-        model=args.model,
-        timeout=args.timeout,
-        browser=args.browser,
-        exp_name=args.exp_name,
-        output_dir=args.output_dir,
-    )
+    # Parse and validate models
+    model_list = [m.strip() for m in args.models.split(",") if m.strip()]
+    if not model_list:
+        parser.error("No valid models provided")
+    
+    # Validate each model
+    invalid_models = [m for m in model_list if m not in supported_models]
+    if invalid_models:
+        parser.error(f"Invalid models: {', '.join(invalid_models)}. Supported models are: {', '.join(supported_models)}")
+    
+    logger.info(f"Running evaluation for {len(model_list)} model(s): {', '.join(model_list)}")
+    
+    # Run evaluation for each model
+    for i, model in enumerate(model_list, 1):
+        logger.info(f"\n{'='*60}")
+        logger.info(f"Starting evaluation {i}/{len(model_list)}: {model}")
+        logger.info(f"{'='*60}\n")
+        
+        # Initialize and run the evaluation pipeline for this model
+        pipeline = MCPEvaluator(
+            service=args.service,
+            model=model,
+            timeout=args.timeout,
+            browser=args.browser,
+            exp_name=args.exp_name,
+            output_dir=args.output_dir,
+        )
 
-    pipeline.run_evaluation(args.tasks)
-    logger.info(f"✓ Evaluation completed. Results saved in: {pipeline.base_experiment_dir}")
+        pipeline.run_evaluation(args.tasks)
+        logger.info(f"✓ Evaluation completed for {model}. Results saved in: {pipeline.base_experiment_dir}")
+    
+    logger.info(f"\n{'='*60}")
+    logger.info(f"✓ All evaluations completed for {len(model_list)} model(s)")
+    logger.info(f"{'='*60}")
 
 
 if __name__ == "__main__":
