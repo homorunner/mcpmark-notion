@@ -347,7 +347,7 @@ def main():
     # Playwright configuration
     parser.add_argument(
         "--browser",
-        default="firefox",
+        default="chromium",
         choices=["chromium", "firefox"],
         help="Playwright browser engine to use (default: firefox)",
     )
