@@ -128,6 +128,16 @@ class NotionStateManager(BaseStateManager):
             logger.error("Failed to duplicate template for %s: %s", task.name, e)
             return False
 
+    def _rename_template_via_api(self, template_id: str, new_title: str) -> None:
+        """Renames a Notion page using the API."""
+        try:
+            self.eval_notion_client.pages.update(
+                page_id=template_id,
+                properties={"title": {"title": [{"text": {"content": new_title}}]}},
+            )
+        except Exception as e:
+            logger.error("Failed to rename page via API: %s", e)
+
     # ------------------------------------------------------------------
     # Playwright helpers
     # ------------------------------------------------------------------
@@ -236,9 +246,10 @@ class NotionStateManager(BaseStateManager):
     def _duplicate_current_template(
         self,
         page: Page,
+        new_title: Optional[str] = None,
         *,
         original_template_id: str,
-        template_title: str,
+        original_template_title: str,
         wait_timeout: int = 180_000,
     ) -> str:
         """Duplicates the currently open Notion template using Playwright."""
@@ -266,13 +277,18 @@ class NotionStateManager(BaseStateManager):
                     duplicated_url,
                 )
                 # Attempt to clean up stray duplicate before propagating error.
-                self._cleanup_orphan_duplicate(original_template_id, template_title)
+                self._cleanup_orphan_duplicate(original_template_id, original_template_title)
                 raise RuntimeError("Duplicate URL pattern mismatch – duplication likely failed")
 
             duplicated_template_id = self._extract_template_id_from_url(duplicated_url)
-
-            # Always move to evaluation parent, regardless of renaming
+            
+            # Always move to evaluation parent
             self._move_current_page_to_env(page, wait_timeout=wait_timeout)
+
+            # Rename if new title is provided
+            if new_title:
+                self._rename_template_via_api(duplicated_template_id, new_title)
+                
             # verify whether the page is moved to the evaluation parent page
             try:
                 result = self.eval_notion_client.pages.retrieve(page_id=duplicated_template_id)
@@ -366,11 +382,13 @@ class NotionStateManager(BaseStateManager):
                     context.storage_state(path=str(self.state_file))
 
                     template_id = self._extract_template_id_from_url(template_url)
+                    template_title = self._category_to_template_title(category)
 
                     duplicated_id = self._duplicate_current_template(
                         page,
+                        new_title=template_title,  # Use original template name without (1) suffix
                         original_template_id=template_id,
-                        template_title=self._category_to_template_title(category),
+                        original_template_title=template_title,
                         wait_timeout=wait_timeout,
                     )
                     duplicated_url = page.url

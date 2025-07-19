@@ -410,7 +410,7 @@ class NotionTaskManager(BaseTaskManager):
                         total_input_tokens += response.usage.input_tokens
                         total_output_tokens += response.usage.output_tokens
                         total_tokens += response.usage.total_tokens
-                logger.info(f"Token usage - Input: {total_input_tokens}, Output: {total_output_tokens}, Total: {total_tokens}")
+                logger.info(f"\nToken usage - Input: {total_input_tokens}, Output: {total_output_tokens}, Total: {total_tokens}")
                 
         except Exception as e:
             logger.error(f"Error during streaming: {e}", exc_info=True)
