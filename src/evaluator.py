@@ -73,26 +73,31 @@ class MCPEvaluator:
     # Resuming helpers
     # ------------------------------------------------------------------
 
-    def _convert_dict_to_task_result(self, data: dict) -> TaskResult:
-        """Helper to convert a JSON-serialisable dict back to TaskResult."""
-        return TaskResult(**data)
-
     def _load_latest_task_result(self, task) -> Optional[TaskResult]:
         """Return the most recent TaskResult for *task* if it has been run before."""
         task_dir = self._get_task_output_dir(task)
         if not task_dir.exists():
             return None
 
-        json_files = sorted(task_dir.glob("evaluation_report_*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
-        if not json_files:
+        meta_path = task_dir / "meta.json"
+        if not meta_path.exists():
             return None
 
         try:
-            with json_files[0].open("r", encoding="utf-8") as f:
-                data = json.load(f)
-            # Expect single-task report – first element in task_results
-            if data.get("task_results"):
-                return self._convert_dict_to_task_result(data["task_results"][0])
+            with meta_path.open("r", encoding="utf-8") as f:
+                meta_data = json.load(f)
+            
+            # Reconstruct TaskResult from meta.json
+            return TaskResult(
+                task_name=meta_data["task_name"],
+                success=meta_data["execution_result"]["success"],
+                execution_time=meta_data["execution_time"],
+                error_message=meta_data["execution_result"]["error_message"],
+                category=task.category,
+                task_id=task.task_id,
+                # We don't need model_output for resume functionality
+                model_output=None
+            )
         except Exception as exc:
             logger.warning("Failed to load existing result for %s: %s", task.name, exc)
         return None
@@ -106,14 +111,33 @@ class MCPEvaluator:
         for task_dir in self.base_experiment_dir.iterdir():
             if not task_dir.is_dir():
                 continue
-            json_files = sorted(task_dir.glob("evaluation_report_*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
-            if not json_files:
+            meta_path = task_dir / "meta.json"
+            if not meta_path.exists():
                 continue
             try:
-                with json_files[0].open("r", encoding="utf-8") as f:
-                    data = json.load(f)
-                if data.get("task_results"):
-                    results.append(self._convert_dict_to_task_result(data["task_results"][0]))
+                with meta_path.open("r", encoding="utf-8") as f:
+                    meta_data = json.load(f)
+                
+                # Extract category and task_id from directory name
+                # Format: category_task-N
+                dir_parts = task_dir.name.split("_task-")
+                if len(dir_parts) == 2:
+                    category = dir_parts[0].replace("-", "_")
+                    task_id = int(dir_parts[1])
+                else:
+                    category = "unknown"
+                    task_id = 0
+                
+                result = TaskResult(
+                    task_name=meta_data["task_name"],
+                    success=meta_data["execution_result"]["success"],
+                    execution_time=meta_data["execution_time"],
+                    error_message=meta_data["execution_result"]["error_message"],
+                    category=category,
+                    task_id=task_id,
+                    model_output=None
+                )
+                results.append(result)
             except Exception as exc:
                 logger.warning("Failed to parse existing report in %s: %s", task_dir, exc)
         return results
@@ -199,33 +223,31 @@ class MCPEvaluator:
             # ----------------------------------------------------------
             # Save results for this single task immediately for resume
             # ----------------------------------------------------------
-            single_report = EvaluationReport(
-                model_name=self.model,
-                model_config={
-                    "service": self.service,
-                    "base_url": self.base_url,
-                    "model_name": self.actual_model_name,
-                    "timeout": self.timeout,
-                },
-                start_time=datetime.fromtimestamp(task_start),
-                end_time=datetime.fromtimestamp(task_end),
-                total_tasks=1,
-                successful_tasks=1 if task_result.success else 0,
-                failed_tasks=0 if task_result.success else 1,
-                task_results=[task_result],
-                tasks_filter=task.name,
-            )
-
             # Prepare directory & save
             task_output_dir = self._get_task_output_dir(task)
             task_output_dir.mkdir(parents=True, exist_ok=True)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-            json_path = task_output_dir / f"evaluation_report_{timestamp}.json"
-            csv_path = task_output_dir / f"evaluation_results_{timestamp}.csv"
+            # Save messages.json (conversation trajectory)
+            messages_path = task_output_dir / "messages.json"
+            # Extract messages from model_output if available
+            messages = task_result.model_output if hasattr(task_result, 'model_output') and task_result.model_output else []
+            self.results_reporter.save_messages_json(messages, messages_path)
 
-            self.results_reporter.save_json_report(single_report, str(json_path))
-            self.results_reporter.save_csv_report(single_report, str(csv_path))
+            # Save meta.json (all other metadata)
+            meta_path = task_output_dir / "meta.json"
+            model_config = {
+                "service": self.service,
+                "base_url": self.base_url,
+                "model_name": self.actual_model_name,
+                "timeout": self.timeout,
+            }
+            self.results_reporter.save_meta_json(
+                task_result,
+                model_config,
+                datetime.fromtimestamp(task_start),
+                datetime.fromtimestamp(task_end),
+                meta_path
+            )
 
         pipeline_end_time = time.time()
 
@@ -269,6 +291,10 @@ class MCPEvaluator:
             task_results=final_results,
             tasks_filter=task_filter,
         )
+
+        # Save model-level summary
+        summary_path = self.base_experiment_dir / "summary.json"
+        self.results_reporter.save_model_summary(aggregated_report, summary_path)
 
         logger.info("\n==================== Evaluation Summary ===========================")
         logger.info(

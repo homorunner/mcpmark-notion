@@ -5,11 +5,8 @@ MCPBench Unified Evaluation Pipeline
 
 This script provides an automated evaluation pipeline for testing Large Language Models (LLMs)
 on various Multi-Step Cognitive Processes (MCP) services like Notion, GitHub, and PostgreSQL.
-It supports optional state management for consistent and reliable evaluations.
 """
 import argparse
-
-from datetime import datetime
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -76,12 +73,6 @@ def main():
         default=Path("./results"),
         help="Directory to save results",
     )
-    parser.add_argument(
-        "--no-json", action="store_true", help="Skip JSON report generation"
-    )
-    parser.add_argument(
-        "--no-csv", action="store_true", help="Skip CSV report generation"
-    )
     
     # Load arguments and environment variables
     args = parser.parse_args()
@@ -97,25 +88,8 @@ def main():
         output_dir=args.output_dir,
     )
 
-    report = pipeline.run_evaluation(args.tasks)
-
-    # Create a unique output directory for the report
-    sanitized_task_filter = args.tasks.replace("/", "_")
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-    json_path = pipeline.base_experiment_dir / f"evaluation_report_{sanitized_task_filter}_{timestamp}.json"
-    csv_path = pipeline.base_experiment_dir / f"evaluation_results_{sanitized_task_filter}_{timestamp}.csv"
-    summary_path = pipeline.base_experiment_dir / f"evaluation_summary_{sanitized_task_filter}_{timestamp}.csv"
-
-    # Save the evaluation reports
-    if not args.no_json:
-        json_path = pipeline.results_reporter.save_json_report(report, str(json_path))
-        logger.info(f"✓ JSON report saved: {json_path}")
-
-    if not args.no_csv:
-        csv_path = pipeline.results_reporter.save_csv_report(report, str(csv_path))
-        summary_path = pipeline.results_reporter.save_summary_csv(report, str(summary_path))
-        logger.info(f"✓ CSV reports saved: {csv_path}, {summary_path}")
+    pipeline.run_evaluation(args.tasks)
+    logger.info(f"✓ Evaluation completed. Results saved in: {pipeline.base_experiment_dir}")
 
 
 if __name__ == "__main__":
