@@ -421,7 +421,6 @@ class NotionTaskManager(BaseTaskManager):
             logger.error(f"Error during streaming: {e}", exc_info=True)
             if result._run_impl_task:
                 logger.error(f"Background task exception: {result._run_impl_task.exception()}")
-            raise
         
         # Extract token usage before returning
         token_usage = {}
