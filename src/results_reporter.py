@@ -39,6 +39,7 @@ class TaskResult:
     task_id: Optional[int] = None
     error_message: Optional[str] = None
     model_output: Optional[Any] = None  # Agent conversation trajectory
+    token_usage: Optional[Dict[str, int]] = None  # Token usage statistics
 
     @property
     def status(self) -> str:
@@ -66,6 +67,54 @@ class EvaluationReport:
         if self.total_tasks == 0:
             return 0.0
         return (self.successful_tasks / self.total_tasks) * 100
+    
+    @property
+    def total_input_tokens(self) -> int:
+        """Calculate total input tokens across all tasks."""
+        total = 0
+        for result in self.task_results:
+            if result.token_usage:
+                total += result.token_usage.get("input_tokens", 0)
+        return total
+    
+    @property
+    def total_output_tokens(self) -> int:
+        """Calculate total output tokens across all tasks."""
+        total = 0
+        for result in self.task_results:
+            if result.token_usage:
+                total += result.token_usage.get("output_tokens", 0)
+        return total
+    
+    @property
+    def total_tokens(self) -> int:
+        """Calculate total tokens across all tasks."""
+        total = 0
+        for result in self.task_results:
+            if result.token_usage:
+                total += result.token_usage.get("total_tokens", 0)
+        return total
+    
+    @property
+    def avg_input_tokens(self) -> float:
+        """Calculate average input tokens per task."""
+        if self.total_tasks == 0:
+            return 0.0
+        return self.total_input_tokens / self.total_tasks
+    
+    @property
+    def avg_output_tokens(self) -> float:
+        """Calculate average output tokens per task."""
+        if self.total_tasks == 0:
+            return 0.0
+        return self.total_output_tokens / self.total_tasks
+    
+    @property
+    def avg_total_tokens(self) -> float:
+        """Calculate average total tokens per task."""
+        if self.total_tasks == 0:
+            return 0.0
+        return self.total_tokens / self.total_tasks
 
     @property
     def execution_time(self) -> timedelta:
@@ -87,6 +136,12 @@ class EvaluationReport:
                     "failed": 0,
                     "success_rate": 0.0,
                     "avg_execution_time": 0.0,
+                    "total_input_tokens": 0,
+                    "total_output_tokens": 0,
+                    "total_tokens": 0,
+                    "avg_input_tokens": 0.0,
+                    "avg_output_tokens": 0.0,
+                    "avg_total_tokens": 0.0,
                 }
 
             category_stats[category]["total"] += 1
@@ -94,6 +149,12 @@ class EvaluationReport:
                 category_stats[category]["successful"] += 1
             else:
                 category_stats[category]["failed"] += 1
+            
+            # Add token usage
+            if result.token_usage:
+                category_stats[category]["total_input_tokens"] += result.token_usage.get("input_tokens", 0)
+                category_stats[category]["total_output_tokens"] += result.token_usage.get("output_tokens", 0)
+                category_stats[category]["total_tokens"] += result.token_usage.get("total_tokens", 0)
 
         # Calculate derived metrics like success rate and average time
         for category, stats in category_stats.items():
@@ -106,6 +167,11 @@ class EvaluationReport:
                 ]
                 total_time = sum(r.execution_time for r in category_results)
                 stats["avg_execution_time"] = total_time / len(category_results)
+                
+                # Calculate average tokens
+                stats["avg_input_tokens"] = stats["total_input_tokens"] / stats["total"]
+                stats["avg_output_tokens"] = stats["total_output_tokens"] / stats["total"]
+                stats["avg_total_tokens"] = stats["total_tokens"] / stats["total"]
 
         return category_stats
 
@@ -141,7 +207,8 @@ class ResultsReporter:
             "execution_result": {
                 "success": task_result.success,
                 "error_message": task_result.error_message
-            }
+            },
+            "token_usage": task_result.token_usage or {}
         }
         
         with output_path.open("w", encoding="utf-8") as f:
@@ -162,11 +229,27 @@ class ResultsReporter:
             "success_rate": round(report.success_rate, 2),
             "total_execution_time": report.execution_time.total_seconds(),
             "average_execution_time": report.execution_time.total_seconds() / report.total_tasks if report.total_tasks > 0 else 0,
+            "token_usage": {
+                "total_input_tokens": report.total_input_tokens,
+                "total_output_tokens": report.total_output_tokens,
+                "total_tokens": report.total_tokens,
+                "avg_input_tokens": round(report.avg_input_tokens, 2),
+                "avg_output_tokens": round(report.avg_output_tokens, 2),
+                "avg_total_tokens": round(report.avg_total_tokens, 2)
+            },
             "category_breakdown": {
                 category: {
                     "total": stats["total"],
                     "success_rate": round(stats["success_rate"], 2),
-                    "avg_time": round(stats["avg_execution_time"], 2)
+                    "avg_time": round(stats["avg_execution_time"], 2),
+                    "token_usage": {
+                        "total_input": stats["total_input_tokens"],
+                        "total_output": stats["total_output_tokens"],
+                        "total": stats["total_tokens"],
+                        "avg_input": round(stats["avg_input_tokens"], 2),
+                        "avg_output": round(stats["avg_output_tokens"], 2),
+                        "avg_total": round(stats["avg_total_tokens"], 2)
+                    }
                 }
                 for category, stats in category_stats.items()
             }

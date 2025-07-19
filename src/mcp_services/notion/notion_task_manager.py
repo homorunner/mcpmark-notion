@@ -305,7 +305,8 @@ class NotionTaskManager(BaseTaskManager):
                     error_message=error_message,
                     model_output=result.get('output', ''),
                     category=task.category,
-                    task_id=task.task_id
+                    task_id=task.task_id,
+                    token_usage=result.get('token_usage', {})
                 )
                 
             finally:
@@ -357,7 +358,7 @@ class NotionTaskManager(BaseTaskManager):
         
         return path.read_text(encoding="utf-8")
     
-    async def _run_single_task_async(self, agent: Agent, task_content: str) -> str:
+    async def _run_single_task_async(self, agent: Agent, task_content: str) -> tuple[str, dict]:
         """Send task content to agent and stream the response."""
         # Prepare the conversation with a single user message
         conversation = [{"content": task_content, "role": "user"}]
@@ -403,22 +404,50 @@ class NotionTaskManager(BaseTaskManager):
                                     pass
             
             logger.info(f"Total events received: {event_count}")
+            
+            # Log token usage from raw_responses
+            if hasattr(result, 'raw_responses') and result.raw_responses:
+                total_input_tokens = 0
+                total_output_tokens = 0
+                total_tokens = 0
+                for response in result.raw_responses:
+                    if hasattr(response, 'usage') and response.usage:
+                        total_input_tokens += response.usage.input_tokens
+                        total_output_tokens += response.usage.output_tokens
+                        total_tokens += response.usage.total_tokens
+                logger.info(f"Token usage - Input: {total_input_tokens}, Output: {total_output_tokens}, Total: {total_tokens}")
+                
         except Exception as e:
             logger.error(f"Error during streaming: {e}", exc_info=True)
             if result._run_impl_task:
                 logger.error(f"Background task exception: {result._run_impl_task.exception()}")
             raise
         
-        print()  # Final newline after the assistant's completion
+        # Extract token usage before returning
+        token_usage = {}
+        if hasattr(result, 'raw_responses') and result.raw_responses:
+            total_input = 0
+            total_output = 0
+            total = 0
+            for resp in result.raw_responses:
+                if hasattr(resp, 'usage') and resp.usage:
+                    total_input += resp.usage.input_tokens
+                    total_output += resp.usage.output_tokens
+                    total += resp.usage.total_tokens
+            token_usage = {
+                "input_tokens": total_input,
+                "output_tokens": total_output,
+                "total_tokens": total
+            }
         
-        return result.to_input_list()
+        return result.to_input_list(), token_usage
     
     def _run_single_task_file_once(self, task_file_path: str, timeout: int) -> Dict[str, Any]:
         """Run the task exactly once (helper for retry wrapper)."""
         task_path = Path(task_file_path)
 
         try:
-            async def _run() -> str:
+            async def _run() -> tuple[str, dict]:
                 """Internal coroutine that performs the actual evaluation."""
                 async with await self._create_mcp_server() as server:
                     agent = Agent(name="Notion Agent", mcp_servers=[server])
@@ -434,12 +463,13 @@ class NotionTaskManager(BaseTaskManager):
                     return await self._run_single_task_async(agent, task_content)
 
             # Execute with timeout handling
-            assistant_response: str = asyncio.run(asyncio.wait_for(_run(), timeout=timeout))
+            assistant_response, token_usage = asyncio.run(asyncio.wait_for(_run(), timeout=timeout))
 
             return {
                 "success": True,
                 "output": assistant_response,
                 "error": None,
+                "token_usage": token_usage,
             }
 
         except asyncio.TimeoutError:
