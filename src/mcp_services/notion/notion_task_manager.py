@@ -8,7 +8,6 @@ evaluation tasks within the MCPBench project structure, as well as executing
 Notion API tasks using an MCP-enabled agent with configurable models and environments.
 """
 
-import argparse
 import asyncio
 import os
 import subprocess
@@ -251,9 +250,7 @@ class NotionTaskManager(BaseTaskManager):
         
         try:
             # Prepare task description with template ID
-            template_id = str(task.duplicated_template_id)
-            task_description = task.get_description() + f"\n\nNote:\n1. The ID of the working page is `{template_id}`. Check the title and properties of this block; this should be the first step."
-            task_description = task_description + "\n2. Based on your understanding, solve the task all at once by yourself, don't ask for my opinions on anything."
+            task_description = task.get_description() + f"\n\nNote: Based on your understanding, solve the task all at once by yourself, don't ask for my opinions on anything."
             
             # Create temporary task file
             with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
@@ -402,8 +399,6 @@ class NotionTaskManager(BaseTaskManager):
                                 #     logger.info(f"-- Message output:\n {ItemHelpers.text_message_output(event.item)}")
                                 else:
                                     pass
-            
-            logger.info(f"Total events received: {event_count}")
             
             # Log token usage from raw_responses
             if hasattr(result, 'raw_responses') and result.raw_responses:

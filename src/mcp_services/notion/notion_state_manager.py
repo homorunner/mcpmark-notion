@@ -128,16 +128,6 @@ class NotionStateManager(BaseStateManager):
             logger.error("Failed to duplicate template for %s: %s", task.name, e)
             return False
 
-    def _rename_template_via_api(self, template_id: str, new_title: str) -> None:
-        """Renames a Notion page using the API."""
-        try:
-            self.source_notion_client.pages.update(
-                page_id=template_id,
-                properties={"title": {"title": [{"text": {"content": new_title}}]}},
-            )
-        except Exception as e:
-            logger.error("Failed to rename page via API: %s", e)
-
     # ------------------------------------------------------------------
     # Playwright helpers
     # ------------------------------------------------------------------
@@ -246,7 +236,6 @@ class NotionStateManager(BaseStateManager):
     def _duplicate_current_template(
         self,
         page: Page,
-        new_title: Optional[str] = None,
         *,
         original_template_id: str,
         template_title: str,
@@ -282,19 +271,18 @@ class NotionStateManager(BaseStateManager):
 
             duplicated_template_id = self._extract_template_id_from_url(duplicated_url)
 
-            if new_title:
-                self._rename_template_via_api(duplicated_template_id, new_title)
-                self._move_current_page_to_env(page, wait_timeout=wait_timeout)
-                # verify whether the page is moved to the evaluation parent page
-                try:
-                    result = self.eval_notion_client.pages.retrieve(page_id=duplicated_template_id)
-                    if not result or not isinstance(result, dict):
-                        logger.error("Playwright move to error: Notion API did not return a valid page dict after move.")
-                        raise RuntimeError("Playwright move to error: Notion API did not return a valid page dict after move.")
-                    logger.info("✅ Page moved to '%s' successfully.", self.eval_parent_page_title)
-                except Exception as move_exc:
-                    logger.error(f"Playwright move to error: {move_exc}")
-                    raise RuntimeError("Playwright move to error: Notion client failed to retrieve page after move.") from move_exc
+            # Always move to evaluation parent, regardless of renaming
+            self._move_current_page_to_env(page, wait_timeout=wait_timeout)
+            # verify whether the page is moved to the evaluation parent page
+            try:
+                result = self.eval_notion_client.pages.retrieve(page_id=duplicated_template_id)
+                if not result or not isinstance(result, dict):
+                    logger.error("Playwright move to error: Notion API did not return a valid page dict after move.")
+                    raise RuntimeError("Playwright move to error: Notion API did not return a valid page dict after move.")
+                logger.info("✅ Page moved to '%s' successfully.", self.eval_parent_page_title)
+            except Exception as move_exc:
+                logger.error(f"Playwright move to error: {move_exc}")
+                raise RuntimeError("Playwright move to error: Notion client failed to retrieve page after move.") from move_exc
 
             return duplicated_template_id
         except PlaywrightTimeoutError as e:
@@ -377,12 +365,10 @@ class NotionStateManager(BaseStateManager):
                     page.goto(template_url, wait_until="load", timeout=60_000)
                     context.storage_state(path=str(self.state_file))
 
-                    duplicate_title = f"[EVAL IN PROGRESS - {self.model_name.upper()}] {task_name}"
                     template_id = self._extract_template_id_from_url(template_url)
 
                     duplicated_id = self._duplicate_current_template(
                         page,
-                        duplicate_title,
                         original_template_id=template_id,
                         template_title=self._category_to_template_title(category),
                         wait_timeout=wait_timeout,
@@ -390,9 +376,9 @@ class NotionStateManager(BaseStateManager):
                     duplicated_url = page.url
                     # Validate URL pattern again at this higher level (should already be validated inside).
                     context.storage_state(path=str(self.state_file))
-                    # Log how long the whole duplication (navigate → duplicate → rename) took.
+                    # Log how long the whole duplication (navigate → duplicate) took.
                     elapsed = time.time() - start_time
-                    logger.info("✅ Template duplicated and renamed successfully in %.2f seconds (task: %s).", elapsed, task_name)
+                    logger.info("✅ Template duplicated successfully in %.2f seconds (task: %s).", elapsed, task_name)
                     return duplicated_url, duplicated_id
             except Exception as e:
                 # No additional cleanup here—handled inside _duplicate_current_template.
