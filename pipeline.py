@@ -11,12 +11,11 @@ import argparse
 
 from datetime import datetime
 from pathlib import Path
-from typing import List
 from dotenv import load_dotenv
 
+from src.logger import get_logger
 from src.evaluator import MCPEvaluator
 from src.factory import MCPServiceFactory
-from src.logger import get_logger
 from src.model_config import ModelConfig
 
 
@@ -92,7 +91,6 @@ def main():
     pipeline = MCPEvaluator(
         service=args.service,
         model=args.model,
-        max_workers=args.max_workers,
         timeout=args.timeout,
         browser=args.browser,
         exp_name=args.exp_name,
