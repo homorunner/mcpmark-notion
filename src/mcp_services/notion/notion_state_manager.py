@@ -267,7 +267,7 @@ class NotionStateManager(BaseStateManager):
             page.wait_for_url(lambda url: url != original_url, timeout=wait_timeout)
             
             # wait for the page to fully load
-            time.sleep(1)
+            time.sleep(5)
             duplicated_url = page.url
             # Validate that the resulting URL is a genuine duplicate of the original template.
             if not self._is_valid_duplicate_url(original_url, duplicated_url):
@@ -399,6 +399,7 @@ class NotionStateManager(BaseStateManager):
                 last_exc = e
                 if attempt < max_retries:
                     logger.warning("⚠️ Duplication attempt %d failed: %s. Retrying...", attempt + 1, e)
+                time.sleep(120 * attempt + 120)
         
         raise RuntimeError(
             f"Template duplication failed for task '{task_name}' after {max_retries + 1} attempts: {last_exc}"
