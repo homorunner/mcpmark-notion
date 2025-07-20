@@ -108,21 +108,20 @@ python tests/test_login.py
 
 The verification script will tell you which browser is working properly. The pipeline defaults to using **chromium**. Our pipeline has been **fully tested on macOS and Linux**.
 
-## 5 · Run the Evaluation
+## 5 · Run the Evaluation (Notion supported; other MCPs coming soon)
 
 ```bash
 # Evaluate ALL 20 tasks
-python pipeline.py --tasks all --models o3
+python pipeline.py --service notion --tasks all --models o3
 
 # Evaluate a single task group
-python pipeline.py --tasks online_resume --models o3
+python pipeline.py --service notion --tasks online_resume --models o3
 
 # Evaluate one specific task
-python pipeline.py --tasks online_resume/task_1 --models o3
+python pipeline.py --service notion --tasks online_resume/task_1 --models o3
 
 # Evaluate multiple models
-python pipeline.py --tasks all --models o3,gpt-4.1,claude-4-sonnet
-
+python pipeline.py --service notion --tasks all --models o3,gpt-4.1,claude-4-sonnet
 ```
 
 **Auto-resume is supported:** When you rerun an evaluation command, only unfinished tasks will be executed. Tasks that previously failed due to pipeline errors (such as `State Duplication Error` or `MCP Network Error`) will also be retried automatically.
