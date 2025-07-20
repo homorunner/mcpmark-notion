@@ -3,7 +3,6 @@
 MCPBench is a comprehensive evaluation suite for testing AI models’ ability to operate a Notion workspace through the **Model Context Protocol (MCP)**.  
 It ships with **20 real-world tasks** (e.g., habit tracker, online resume builder) that can be run against **your own MCP server and your own Notion pages**.
 
----
 
 ## 1 · Set-up Your Notion Workspace
 
@@ -29,8 +28,6 @@ It ships with **20 real-world tasks** (e.g., habit tracker, online resume builde
    ![API Access](asset/api_access.png)
    ![Grant Access Source](asset/grant_access_source.png)
    ![Grant Access Eval](asset/grant_access_eval.png)
-
----
 
 ## 2 · Environment Variables
 
@@ -90,7 +87,6 @@ For running task verification scripts directly (e.g., `python tasks/habit_tracke
 export PYTHONPATH="$(pwd):${PYTHONPATH}"
 ```
 
----
 
 ## 3 · Installation
 
@@ -98,7 +94,6 @@ export PYTHONPATH="$(pwd):${PYTHONPATH}"
 pip install -r requirements.txt
 ```
 
----
 
 ## 4 · Authenticate with Notion
 
@@ -113,50 +108,30 @@ python tests/test_login.py
 
 The verification script will tell you which browser is working properly. The pipeline defaults to using **chromium**. Our pipeline has been **fully tested on macOS and Linux**.
 
----
-
 ## 5 · Run the Evaluation
 
 ```bash
 # Evaluate ALL 20 tasks
-python pipeline.py --tasks all --model-name $MCPBENCH_MODEL_NAME
+python pipeline.py --tasks all --models o3
 
 # Evaluate a single task group
-python pipeline.py --tasks online_resume --model-name $MCPBENCH_MODEL_NAME
+python pipeline.py --tasks online_resume --models o3
 
 # Evaluate one specific task
-python pipeline.py --tasks online_resume/task_1 --model-name $MCPBENCH_MODEL_NAME
+python pipeline.py --tasks online_resume/task_1 --models o3
+
+# Evaluate multiple models
+python pipeline.py --tasks all --models o3,gpt-4.1,claude-4-sonnet
+
 ```
 
 **Auto-resume is supported:** When you rerun an evaluation command, only unfinished tasks will be executed. Tasks that previously failed due to pipeline errors (such as `State Duplication Error` or `MCP Network Error`) will also be retried automatically.
 
 Results are written to `./results/` (JSON + CSV).  
 
----
-
-## 6 · Project Structure
-
-```
-MCPBench/
-├── src/
-│   ├── pipeline.py            # Main evaluation entry point
-│   ├── notion_login.py        # Browser-based login utility
-│   └── core/                  # Task runner, results reporter, template mgr.
-├── tasks/                     # 20 evaluation tasks across 6 categories
-├── tests/                     # Full pytest suite
-├── docs/                      # Additional guides & screenshots
-└── results/                   # Auto-generated evaluation outputs
-```
-
----
-
-## 7 · Contributing
+## 6 · Contributing
 
 1. Fork the repository and create a feature branch.  
 2. Add new tasks inside `tasks/<category>/<task_n>/` with a `description.md` and a `verify.py`.  
 3. Ensure all tests pass.  
 4. Submit a pull request — contributions are welcome!
-
----
-
-Happy benchmarking! 🎉
