@@ -143,6 +143,8 @@ class EvaluationReport:
                     "avg_input_tokens": 0.0,
                     "avg_output_tokens": 0.0,
                     "avg_total_tokens": 0.0,
+                    "total_turns": 0,
+                    "avg_turns": 0.0,
                 }
 
             category_stats[category]["total"] += 1
@@ -151,11 +153,15 @@ class EvaluationReport:
             else:
                 category_stats[category]["failed"] += 1
             
-            # Add token usage
+            # Add token and turn usage
             if result.token_usage:
                 category_stats[category]["total_input_tokens"] += result.token_usage.get("input_tokens", 0)
                 category_stats[category]["total_output_tokens"] += result.token_usage.get("output_tokens", 0)
                 category_stats[category]["total_tokens"] += result.token_usage.get("total_tokens", 0)
+
+            # Accumulate turns
+            if result.turn_count is not None:
+                category_stats[category]["total_turns"] += result.turn_count
 
         # Calculate derived metrics like success rate and average time
         for category, stats in category_stats.items():
@@ -169,10 +175,12 @@ class EvaluationReport:
                 total_time = sum(r.execution_time for r in category_results)
                 stats["avg_execution_time"] = total_time / len(category_results)
                 
-                # Calculate average tokens
+                # Calculate average tokens and turns
                 stats["avg_input_tokens"] = stats["total_input_tokens"] / stats["total"]
                 stats["avg_output_tokens"] = stats["total_output_tokens"] / stats["total"]
                 stats["avg_total_tokens"] = stats["total_tokens"] / stats["total"]
+
+                stats["avg_turns"] = stats["total_turns"] / stats["total"] if stats["total"] > 0 else 0
 
         return category_stats
 
@@ -223,6 +231,10 @@ class ResultsReporter:
         
         category_stats = report.get_category_stats()
         
+        # Aggregate turn counts using category_stats
+        total_turns = sum(stats["total_turns"] for stats in category_stats.values())
+        avg_turns = total_turns / report.total_tasks if report.total_tasks > 0 else 0
+
         summary = {
             "model": report.model_name,
             "total_tasks": report.total_tasks,
@@ -239,6 +251,10 @@ class ResultsReporter:
                 "avg_output_tokens": round(report.avg_output_tokens, 2),
                 "avg_total_tokens": round(report.avg_total_tokens, 2)
             },
+            "turn_usage": {
+                "total_turns": total_turns,
+                "avg_turns": round(avg_turns, 2)
+            },
             "category_breakdown": {
                 category: {
                     "total": stats["total"],
@@ -251,7 +267,11 @@ class ResultsReporter:
                         "avg_input": round(stats["avg_input_tokens"], 2),
                         "avg_output": round(stats["avg_output_tokens"], 2),
                         "avg_total": round(stats["avg_total_tokens"], 2)
-                    }
+                    },
+                    "turn_usage": {
+                        "total_turns": stats["total_turns"],
+                        "avg_turns": round(stats["avg_turns"], 2)
+                    },
                 }
                 for category, stats in category_stats.items()
             }
