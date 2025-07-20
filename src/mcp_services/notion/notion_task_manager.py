@@ -303,7 +303,8 @@ class NotionTaskManager(BaseTaskManager):
                     model_output=result.get('output', ''),
                     category=task.category,
                     task_id=task.task_id,
-                    token_usage=result.get('token_usage', {})
+                    token_usage=result.get('token_usage', {}),
+                    turn_count=result.get('turn_count', -1)
                 )
                 
             finally:
@@ -355,7 +356,7 @@ class NotionTaskManager(BaseTaskManager):
         
         return path.read_text(encoding="utf-8")
     
-    async def _run_single_task_async(self, agent: Agent, task_content: str) -> tuple[str, dict]:
+    async def _run_single_task_async(self, agent: Agent, task_content: str) -> tuple[str, dict, int]:
         """Send task content to agent and stream the response."""
         # Prepare the conversation with a single user message
         conversation = [{"content": task_content, "role": "user"}]
@@ -411,6 +412,10 @@ class NotionTaskManager(BaseTaskManager):
                         total_output_tokens += response.usage.output_tokens
                         total_tokens += response.usage.total_tokens
                 logger.info(f"\nToken usage - Input: {total_input_tokens}, Output: {total_output_tokens}, Total: {total_tokens}")
+
+            if hasattr(result, 'current_turn'):
+                turn_count = result.current_turn
+                logger.info(f"Turn count: {turn_count}")
                 
         except Exception as e:
             logger.error(f"Error during streaming: {e}", exc_info=True)
@@ -418,7 +423,7 @@ class NotionTaskManager(BaseTaskManager):
                 logger.error(f"Background task exception: {result._run_impl_task.exception()}")
         
         # Extract token usage before returning
-        token_usage = {}
+        token_usage: dict = {}
         if hasattr(result, 'raw_responses') and result.raw_responses:
             total_input = 0
             total_output = 0
@@ -433,15 +438,18 @@ class NotionTaskManager(BaseTaskManager):
                 "output_tokens": total_output,
                 "total_tokens": total
             }
+
+        # Extract turn count (number of conversational turns)
+        turn_count = getattr(result, "current_turn", None)
         
-        return result.to_input_list(), token_usage
+        return result.to_input_list(), token_usage, turn_count
     
     def _run_single_task_file_once(self, task_file_path: str, timeout: int) -> Dict[str, Any]:
         """Run the task exactly once (helper for retry wrapper)."""
         task_path = Path(task_file_path)
 
         try:
-            async def _run() -> tuple[str, dict]:
+            async def _run() -> tuple[str, dict, int]:
                 """Internal coroutine that performs the actual evaluation."""
                 async with await self._create_mcp_server() as server:
                     agent = Agent(name="Notion Agent", mcp_servers=[server])
@@ -457,13 +465,14 @@ class NotionTaskManager(BaseTaskManager):
                     return await self._run_single_task_async(agent, task_content)
 
             # Execute with timeout handling
-            assistant_response, token_usage = asyncio.run(asyncio.wait_for(_run(), timeout=timeout))
+            assistant_response, token_usage, turn_count = asyncio.run(asyncio.wait_for(_run(), timeout=timeout))
 
             return {
                 "success": True,
                 "output": assistant_response,
                 "error": None,
                 "token_usage": token_usage,
+                "turn_count": turn_count,
             }
 
         except asyncio.TimeoutError:

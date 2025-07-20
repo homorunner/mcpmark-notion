@@ -40,6 +40,7 @@ class TaskResult:
     error_message: Optional[str] = None
     model_output: Optional[Any] = None  # Agent conversation trajectory
     token_usage: Optional[Dict[str, int]] = None  # Token usage statistics
+    turn_count: Optional[int] = None  # Number of turns taken during task execution
 
     @property
     def status(self) -> str:
@@ -208,7 +209,8 @@ class ResultsReporter:
                 "success": task_result.success,
                 "error_message": task_result.error_message
             },
-            "token_usage": task_result.token_usage or {}
+            "token_usage": task_result.token_usage or {},
+            "turn_count": task_result.turn_count
         }
         
         with output_path.open("w", encoding="utf-8") as f:
