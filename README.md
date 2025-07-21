@@ -136,7 +136,7 @@ After your evaluations are done, generate a quick dashboard of model performance
 python results_parser.py --exp-name MCP-RUN --service notion
 ```
 
-This command scans `./results/<EXP_FOLDER_NAME>/` for all model folders that start with the given service prefix.
+This command scans `./results/{args.exp_name}/` for all model folders that start with the given service prefix.
 
 Only models that finished **all** tasks without pipeline errors are visualized. Incomplete models are listed with a resume command so you can easily continue evaluation.
 
