@@ -128,6 +128,22 @@ python pipeline.py --service notion --tasks all --models o3,gpt-4.1,claude-4-son
 
 Results are written to `./results/` (JSON + CSV).  
 
+### Visualize Results
+
+After your evaluations are done, generate a quick dashboard of model performance (success rate + token usage) with:
+
+```bash
+python results_parser.py --exp-name MCP-RUN --service notion
+```
+
+This command scans `./results/<EXP_FOLDER_NAME>/` for all model folders that start with the given service prefix.
+
+Only models that finished **all** tasks without pipeline errors are visualized. Incomplete models are listed with a resume command so you can easily continue evaluation.
+
+The generated plot is saved next to the experiment folder, e.g. `./results/{args.exp_name}/summary_notion.png`.
+
+---
+
 ## 6 · Contributing
 
 1. Fork the repository and create a feature branch.  
