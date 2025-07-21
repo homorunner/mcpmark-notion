@@ -108,7 +108,7 @@ python tests/test_login.py
 
 The verification script will tell you which browser is working properly. The pipeline defaults to using **chromium**. Our pipeline has been **fully tested on macOS and Linux**.
 
-## 5 · Run the Evaluation (Notion supported; other MCPs coming soon)
+## 5 · Run the Evaluation
 
 ```bash
 # Evaluate ALL 20 tasks
