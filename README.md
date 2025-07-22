@@ -1,13 +1,13 @@
 # MCPBench
 
-MCPBench is a comprehensive evaluation suite for testing AI models’ ability to operate a Notion workspace through the **Model Context Protocol (MCP)**.  
+MCPBench is a comprehensive evaluation suite for testing AI models’ ability to operate a Notion workspace through the **Model Context Protocol (MCP)**.
 It ships with **20 real-world tasks** (e.g., habit tracker, online resume builder) that can be run against **your own MCP server and your own Notion pages**.
 
 
 ## 1 · Set-up Your Notion Workspace
 
-1. **Duplicate the MCPBench Source Pages**  
-   Copy the template database and pages into your workspace from the public template:  
+1. **Duplicate the MCPBench Source Pages**
+   Copy the template database and pages into your workspace from the public template:
    [Duplicate MCPBench Source](https://painted-tennis-ebc.notion.site/MCPBench-Source-Hub-23181626b6d7805fb3a7d59c63033819).
 
 2. **Set Up Source Hub and Eval Hub for Environment Isolation**
@@ -19,9 +19,9 @@ It ships with **20 real-world tasks** (e.g., habit tracker, online resume builde
      - Bind the integration corresponding to `EVAL_NOTION_API_KEY` to the Eval Hub parent page you just created.
      - Bind the integration corresponding to `SOURCE_NOTION_API_KEY` to your Source Hub (where the templates are stored).
 
-3. **Create Notion Integrations & Grant Access**  
-   a. Go to [Notion Integrations](https://www.notion.so/profile/integrations) and create two internal integrations (one for Source Hub, one for Eval Hub).  
-   b. Copy the generated **Internal Integration Tokens** (these will be your `SOURCE_NOTION_API_KEY` and `EVAL_NOTION_API_KEY`).  
+3. **Create Notion Integrations & Grant Access**
+   a. Go to [Notion Integrations](https://www.notion.so/profile/integrations) and create two internal integrations (one for Source Hub, one for Eval Hub).
+   b. Copy the generated **Internal Integration Tokens** (these will be your `SOURCE_NOTION_API_KEY` and `EVAL_NOTION_API_KEY`).
    c. Share the **Source Hub** with the Source integration, and the **Eval Hub parent page** with the Eval integration (*Full Access*).
    ![Source Page](asset/source_page.png)
    ![Create Integration](asset/create_integration.png)
@@ -81,29 +81,23 @@ XAI_API_KEY="your-xai-api-key"
 
 You only need to set the variables for the model providers you plan to use. Currently supported model providers: **OpenAI, Google Gemini, DeepSeek, Anthropic, Moonshot, xAI**.
 
-For running task verification scripts directly (e.g., `python tasks/habit_tracker/task_1/verify.py`) or the test suite, make sure the repository root is on your Python module search path:
-
-```bash
-export PYTHONPATH="$(pwd):${PYTHONPATH}"
-```
-
-
 ## 3 · Installation
 
 ```bash
 pip install -r requirements.txt
 ```
 
-
 ## 4 · Authenticate with Notion
 
 ```bash
-# First, run the Notion login helper with your preferred browser
-python src/mcp_services/notion/notion_login_helper.py --browser {firefox|chromium}
+# First, install Playwright and the browser binaries
+playwright install
+# Then, run the Notion login helper with your preferred browser
+python -m src.mcp_services.notion.notion_login_helper --browser {firefox|chromium}
 
 # If login is successful, a cookie file `notion_state.json` will be generated in the project root
 # Verify the login was successful
-python tests/test_login.py
+python -m tests.test_login
 ```
 
 The verification script will tell you which browser is working properly. The pipeline defaults to using **chromium**. Our pipeline has been **fully tested on macOS and Linux**.
@@ -112,28 +106,28 @@ The verification script will tell you which browser is working properly. The pip
 
 ```bash
 # Evaluate ALL 20 tasks
-python pipeline.py --service notion --tasks all --models o3
+python -m pipeline --exp-name run-1 --service notion --tasks all --models o3
 
 # Evaluate a single task group
-python pipeline.py --service notion --tasks online_resume --models o3
+python -m pipeline --exp-name run-1 --service notion --tasks online_resume --models o3
 
 # Evaluate one specific task
-python pipeline.py --service notion --tasks online_resume/task_1 --models o3
+python -m pipeline --exp-name run-1 --service notion --tasks online_resume/task_1 --models o3
 
 # Evaluate multiple models
-python pipeline.py --service notion --tasks all --models o3,gpt-4.1,claude-4-sonnet
+python -m pipeline --exp-name run-1 --service notion --tasks all --models o3,gpt-4.1,claude-4-sonnet
 ```
 
 **Auto-resume is supported:** When you rerun an evaluation command, only unfinished tasks will be executed. Tasks that previously failed due to pipeline errors (such as `State Duplication Error` or `MCP Network Error`) will also be retried automatically.
 
-Results are written to `./results/` (JSON + CSV).  
+Results are written to `./results/` (JSON + CSV).
 
 ### Visualize Results
 
 After your evaluations are done, generate a quick dashboard of model performance (success rate + token usage) with:
 
 ```bash
-python results_parser.py --exp-name MCP-RUN --service notion
+python -m examples.results_parser --exp-name MCP-RUN --service notion
 ```
 
 This command scans `./results/{args.exp_name}/` for all model folders that start with the given service prefix.
@@ -146,7 +140,7 @@ The generated plot is saved next to the experiment folder, e.g. `./results/{args
 
 ## 6 · Contributing
 
-1. Fork the repository and create a feature branch.  
-2. Add new tasks inside `tasks/<category>/<task_n>/` with a `description.md` and a `verify.py`.  
-3. Ensure all tests pass.  
+1. Fork the repository and create a feature branch.
+2. Add new tasks inside `tasks/<category>/<task_n>/` with a `description.md` and a `verify.py`.
+3. Ensure all tests pass.
 4. Submit a pull request — contributions are welcome!
