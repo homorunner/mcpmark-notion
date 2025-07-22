@@ -137,12 +137,13 @@ class GitHubStateManager(BaseStateManager):
             for resource in self.created_resources:
                 try:
                     if resource['type'] == 'repository':
-                        # For testing, we might want to archive rather than delete
-                        if kwargs.get('archive_only', True):
+                        # 默认删除测试仓库，而不是归档
+                        if kwargs.get('archive_only', False):
                             self._archive_repository(resource['owner'], resource['name'])
+                            logger.info(f"Archived repository: {resource['owner']}/{resource['name']}")
                         else:
                             self._delete_repository(resource['owner'], resource['name'])
-                        logger.info(f"Cleaned up repository: {resource['owner']}/{resource['name']}")
+                            logger.info(f"Deleted repository: {resource['owner']}/{resource['name']}")
                         
                 except Exception as e:
                     logger.error(f"Failed to cleanup {resource}: {e}")
@@ -165,7 +166,7 @@ class GitHubStateManager(BaseStateManager):
             return False
         
         # Other categories that might need repos
-        repo_categories = ['file_operations', 'branch_management']
+        repo_categories = ['file_operations', 'branch_management', 'issue_management', 'pull_request_workflow']
         return task.category in repo_categories
 
     def _task_needs_branch(self, task: BaseTask) -> bool:
@@ -252,6 +253,9 @@ class GitHubStateManager(BaseStateManager):
         
         if response.status_code not in [200, 204]:
             logger.warning(f"Failed to delete repository {owner}/{repo_name}: {response.text}")
+            raise Exception(f"Failed to delete repository {owner}/{repo_name}: {response.status_code} {response.text}")
+        else:
+            logger.info(f"Successfully deleted repository {owner}/{repo_name}")
 
     def _get_authenticated_user(self) -> str:
         """Get the username of the authenticated user."""
@@ -306,3 +310,49 @@ class GitHubStateManager(BaseStateManager):
         
         logger.error(f"Failed to create pull request: {response.text}")
         return None 
+
+    def track_created_repository(self, repo_name: str, owner: str = None):
+        """追踪任务执行过程中创建的仓库（例如通过MCP工具）"""
+        if not owner:
+            owner = self._get_authenticated_user()
+        
+        self.created_resources.append({
+            'type': 'repository',
+            'name': repo_name,
+            'owner': owner,
+            'created_by': 'mcp_task'  # 标记为MCP任务创建
+        })
+        logger.info(f"Tracking repository for cleanup: {owner}/{repo_name}")
+
+    def get_test_repositories(self) -> list:
+        """获取所有被追踪的测试仓库列表"""
+        return [r for r in self.created_resources if r['type'] == 'repository']
+
+    def force_cleanup_test_repos(self, pattern: str = "mcpbench-test-") -> bool:
+        """强制清理所有匹配模式的测试仓库"""
+        user = self._get_authenticated_user()
+        if not user:
+            logger.error("Cannot get authenticated user for cleanup")
+            return False
+        
+        success = True
+        # Get user's repositories
+        repos_url = f"https://api.github.com/user/repos?per_page=100"
+        response = self.session.get(repos_url)
+        
+        if response.status_code != 200:
+            logger.error(f"Failed to get user repositories: {response.text}")
+            return False
+        
+        repos = response.json()
+        
+        for repo in repos:
+            if pattern in repo['name']:
+                try:
+                    self._delete_repository(repo['owner']['login'], repo['name'])
+                    logger.info(f"Force deleted test repository: {repo['full_name']}")
+                except Exception as e:
+                    logger.error(f"Failed to force delete {repo['full_name']}: {e}")
+                    success = False
+        
+        return success 

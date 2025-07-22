@@ -416,6 +416,10 @@ class GitHubTaskManager(BaseTaskManager):
                 error_message = verify_result.stderr if not success and verify_result.stderr else None
                 execution_time = time.time() - start_time
                 
+                # 如果是基础仓库创建任务且验证成功，追踪创建的仓库用于后续清理
+                if task.category == 'basic_repo_operations' and success:
+                    self._track_created_repositories_from_verification(task)
+                
                 return TaskResult(
                     task_name=task.name,
                     success=success,
@@ -451,3 +455,15 @@ class GitHubTaskManager(BaseTaskManager):
             logger.info(f"Task {task.name}: {'PASS' if result.success else 'FAIL'}")
         
         return results 
+
+    def _track_created_repositories_from_verification(self, task: GitHubTask):
+        """从验证结果中提取并追踪创建的仓库"""
+        try:
+            # 对于基础仓库操作，我们知道默认创建的仓库名称
+            if 'task_1' in task.task_id:  # 任务1创建mcpbench-test-repo
+                from src.factory import MCPServiceFactory
+                state_manager = MCPServiceFactory.create_state_manager('github')
+                state_manager.track_created_repository('mcpbench-test-repo')
+                logger.info("Tracked repository 'mcpbench-test-repo' for cleanup")
+        except Exception as e:
+            logger.warning(f"Failed to track created repositories: {e}") 
