@@ -8,6 +8,27 @@ import requests
 import sys
 from typing import Optional
 
+# =============================================================================
+# CONFIGURATION - Key fields that may need to be modified
+# =============================================================================
+
+# Repository configuration
+REPO_NAME = "mcpbench-test-repo"
+EXPECTED_DESCRIPTION_KEYWORD = "MCPBench测试仓库"
+
+# Repository property checks configuration
+REPO_CHECKS = [
+    ("Repository is public", lambda repo: not repo.get("private", True), "private"),
+    ("Has Issues enabled", lambda repo: repo.get("has_issues", False), "has_issues"),
+]
+
+# Required files to check
+REQUIRED_FILES = ["README.md"]
+
+# =============================================================================
+# IMPLEMENTATION
+# =============================================================================
+
 def get_github_token() -> Optional[str]:
     """Get GitHub token from environment variables."""
     from dotenv import load_dotenv
@@ -31,29 +52,39 @@ def verify_repository_exists(token: str, owner: str, repo_name: str) -> bool:
     
     repo_data = response.json()
     
-    # Check repository properties
-    checks = [
+    # Check basic repository properties
+    basic_checks = [
         ("Repository name", repo_data.get("name") == repo_name, f"Expected: {repo_name}, Got: {repo_data.get('name')}"),
-        ("Repository description", "MCPBench测试仓库" in (repo_data.get("description") or ""), f"Description: {repo_data.get('description')}"),
-        ("Repository is public", not repo_data.get("private", True), f"Private: {repo_data.get('private')}"),
-        ("Has Issues enabled", repo_data.get("has_issues", False), f"Has issues: {repo_data.get('has_issues')}"),
+        ("Repository description", EXPECTED_DESCRIPTION_KEYWORD in (repo_data.get("description") or ""), f"Description: {repo_data.get('description')}"),
     ]
     
     all_passed = True
-    for check_name, condition, detail in checks:
+    
+    # Run basic checks
+    for check_name, condition, detail in basic_checks:
         if condition:
             print(f"✅ {check_name}: PASS")
         else:
             print(f"❌ {check_name}: FAIL - {detail}")
             all_passed = False
     
-    # Check for README.md file
-    readme_response = requests.get(f"https://api.github.com/repos/{owner}/{repo_name}/readme", headers=headers)
-    if readme_response.status_code == 200:
-        print("✅ README.md file exists: PASS")
-    else:
-        print("❌ README.md file missing: FAIL")
-        all_passed = False
+    # Run configurable repository checks
+    for check_name, check_func, field_name in REPO_CHECKS:
+        condition = check_func(repo_data)
+        if condition:
+            print(f"✅ {check_name}: PASS")
+        else:
+            print(f"❌ {check_name}: FAIL - {field_name}: {repo_data.get(field_name)}")
+            all_passed = False
+    
+    # Check for required files
+    for file_name in REQUIRED_FILES:
+        file_response = requests.get(f"https://api.github.com/repos/{owner}/{repo_name}/contents/{file_name}", headers=headers)
+        if file_response.status_code == 200:
+            print(f"✅ {file_name} file exists: PASS")
+        else:
+            print(f"❌ {file_name} file missing: FAIL")
+            all_passed = False
     
     return all_passed
 
@@ -89,12 +120,11 @@ def main():
     print(f"🔍 Checking repository for user: {owner}")
     
     # Verify repository
-    repo_name = "mcpbench-test-repo"
-    success = verify_repository_exists(token, owner, repo_name)
+    success = verify_repository_exists(token, owner, REPO_NAME)
     
     if success:
         print("\n🎉 Task 1 verification: PASS")
-        print(f"Repository {owner}/{repo_name} created successfully with correct configuration")
+        print(f"Repository {owner}/{REPO_NAME} created successfully with correct configuration")
         sys.exit(0)
     else:
         print("\n❌ Task 1 verification: FAIL")
