@@ -6,6 +6,7 @@ MCP Service Factory for MCPBench
 This module provides a factory pattern for creating service-specific managers
 and configurations for different MCP services like Notion, GitHub, and PostgreSQL.
 """
+
 import os
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional, Type
@@ -185,13 +186,13 @@ class MCPServiceFactory:
     def create_service_config(cls, service_name: str) -> ServiceConfig:
         """
         Creates a configuration object for a given service.
-        
+
         Args:
             service_name: The name of the service.
-            
+
         Returns:
             A ServiceConfig instance.
-            
+
         Raises:
             ValueError: If the service is not supported.
         """

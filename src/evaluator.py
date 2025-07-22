@@ -19,6 +19,7 @@ PIPELINE_RETRY_ERRORS: List[str] = [
 # Initialize logger
 logger = get_logger(__name__)
 
+
 class MCPEvaluator:
     def __init__(
         self,
@@ -64,7 +65,9 @@ class MCPEvaluator:
     def _get_task_output_dir(self, task) -> Path:
         """Return the directory path for storing this task's reports."""
         # Replace underscores with hyphens inside the category name
-        category_slug = task.category.replace("_", "-") if task.category else "uncategorized"
+        category_slug = (
+            task.category.replace("_", "-") if task.category else "uncategorized"
+        )
         task_slug = f"task-{task.task_id}"
 
         return self.base_experiment_dir / f"{category_slug}_{task_slug}"
@@ -86,7 +89,7 @@ class MCPEvaluator:
         try:
             with meta_path.open("r", encoding="utf-8") as f:
                 meta_data = json.load(f)
-            
+
             # Reconstruct TaskResult from meta.json
             return TaskResult(
                 task_name=meta_data["task_name"],
@@ -96,7 +99,7 @@ class MCPEvaluator:
                 category=task.category,
                 task_id=task.task_id,
                 # We don't need model_output for resume functionality
-                model_output=None
+                model_output=None,
             )
         except Exception as exc:
             logger.warning("Failed to load existing result for %s: %s", task.name, exc)
@@ -117,7 +120,7 @@ class MCPEvaluator:
             try:
                 with meta_path.open("r", encoding="utf-8") as f:
                     meta_data = json.load(f)
-                
+
                 # Extract category and task_id from directory name
                 # Format: category_task-N
                 dir_parts = task_dir.name.split("_task-")
@@ -127,7 +130,7 @@ class MCPEvaluator:
                 else:
                     category = "unknown"
                     task_id = 0
-                
+
                 result = TaskResult(
                     task_name=meta_data["task_name"],
                     success=meta_data["execution_result"]["success"],
@@ -135,7 +138,7 @@ class MCPEvaluator:
                     error_message=meta_data["execution_result"]["error_message"],
                     category=category,
                     task_id=task_id,
-                    model_output=None
+                    model_output=None,
                 )
                 results.append(result)
             except Exception as exc:
@@ -246,7 +249,7 @@ class MCPEvaluator:
                 model_config,
                 datetime.fromtimestamp(task_start),
                 datetime.fromtimestamp(task_end),
-                meta_path
+                meta_path,
             )
 
         pipeline_end_time = time.time()
@@ -267,7 +270,11 @@ class MCPEvaluator:
             return tr.category == flt
 
         # Pull existing reports from disk and merge
-        existing_results = [r for r in self._gather_all_task_results() if _matches_filter(r, task_filter)]
+        existing_results = [
+            r
+            for r in self._gather_all_task_results()
+            if _matches_filter(r, task_filter)
+        ]
 
         # Merge, giving preference to fresh `results` (avoids duplicates)
         merged: dict[str, TaskResult] = {r.task_name: r for r in existing_results}
@@ -303,4 +310,3 @@ class MCPEvaluator:
         logger.info(f"✓ Total time: {aggregated_report.execution_time.total_seconds():.1f}s")
 
         return aggregated_report
-

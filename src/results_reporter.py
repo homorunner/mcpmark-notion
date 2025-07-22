@@ -5,6 +5,7 @@ Results Reporter for MCPBench Evaluation Pipeline
 
 This module provides utilities for saving evaluation results in a structured format.
 """
+
 import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -21,7 +22,7 @@ logger = get_logger(__name__)
 class TaskResult:
     """
     Represents the result of a single task evaluation.
-    
+
     Attributes:
         task_name: The full name of the task (e.g., "category/task_1").
         success: Whether the task completed successfully.
@@ -68,7 +69,7 @@ class EvaluationReport:
         if self.total_tasks == 0:
             return 0.0
         return (self.successful_tasks / self.total_tasks) * 100
-    
+
     @property
     def total_input_tokens(self) -> int:
         """Calculate total input tokens across all tasks."""
@@ -77,7 +78,7 @@ class EvaluationReport:
             if result.token_usage:
                 total += result.token_usage.get("input_tokens", 0)
         return total
-    
+
     @property
     def total_output_tokens(self) -> int:
         """Calculate total output tokens across all tasks."""
@@ -86,7 +87,7 @@ class EvaluationReport:
             if result.token_usage:
                 total += result.token_usage.get("output_tokens", 0)
         return total
-    
+
     @property
     def total_tokens(self) -> int:
         """Calculate total tokens across all tasks."""
@@ -95,21 +96,21 @@ class EvaluationReport:
             if result.token_usage:
                 total += result.token_usage.get("total_tokens", 0)
         return total
-    
+
     @property
     def avg_input_tokens(self) -> float:
         """Calculate average input tokens per task."""
         if self.total_tasks == 0:
             return 0.0
         return self.total_input_tokens / self.total_tasks
-    
+
     @property
     def avg_output_tokens(self) -> float:
         """Calculate average output tokens per task."""
         if self.total_tasks == 0:
             return 0.0
         return self.total_output_tokens / self.total_tasks
-    
+
     @property
     def avg_total_tokens(self) -> float:
         """Calculate average total tokens per task."""
@@ -152,7 +153,7 @@ class EvaluationReport:
                 category_stats[category]["successful"] += 1
             else:
                 category_stats[category]["failed"] += 1
-            
+
             # Add token and turn usage
             if result.token_usage:
                 category_stats[category]["total_input_tokens"] += result.token_usage.get("input_tokens", 0)
@@ -166,15 +167,15 @@ class EvaluationReport:
         # Calculate derived metrics like success rate and average time
         for category, stats in category_stats.items():
             if stats["total"] > 0:
-                stats["success_rate"] = (
-                    stats["successful"] / stats["total"]
-                ) * 100
+                stats["success_rate"] = (stats["successful"] / stats["total"]) * 100
                 category_results = [
-                    r for r in self.task_results if (r.category or "Uncategorized") == category
+                    r
+                    for r in self.task_results
+                    if (r.category or "Uncategorized") == category
                 ]
                 total_time = sum(r.execution_time for r in category_results)
                 stats["avg_execution_time"] = total_time / len(category_results)
-                
+
                 # Calculate average tokens and turns
                 stats["avg_input_tokens"] = stats["total_input_tokens"] / stats["total"]
                 stats["avg_output_tokens"] = stats["total_output_tokens"] / stats["total"]
@@ -199,28 +200,31 @@ class ResultsReporter:
             json.dump(messages, f, indent=2, ensure_ascii=False)
         return output_path
 
-    def save_meta_json(self, task_result: TaskResult, model_config: Dict[str, Any], 
-                       start_time: datetime, end_time: datetime, output_path: Path) -> Path:
+    def save_meta_json(
+        self,
+        task_result: TaskResult,
+        model_config: Dict[str, Any],
+        start_time: datetime,
+        end_time: datetime,
+        output_path: Path,
+    ) -> Path:
         """Saves task metadata (excluding messages) as meta.json."""
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         meta_data = {
             "task_name": task_result.task_name,
             "model": model_config.get("model_name", "unknown"),
             "model_config": model_config,
-            "time": {
-                "start": start_time.isoformat(),
-                "end": end_time.isoformat()
-            },
+            "time": {"start": start_time.isoformat(), "end": end_time.isoformat()},
             "execution_time": task_result.execution_time,
             "execution_result": {
                 "success": task_result.success,
-                "error_message": task_result.error_message
+                "error_message": task_result.error_message,
             },
             "token_usage": task_result.token_usage or {},
-            "turn_count": task_result.turn_count
+            "turn_count": task_result.turn_count,
         }
-        
+
         with output_path.open("w", encoding="utf-8") as f:
             json.dump(meta_data, f, indent=2, ensure_ascii=False)
         return output_path
@@ -228,9 +232,9 @@ class ResultsReporter:
     def save_model_summary(self, report: EvaluationReport, output_path: Path) -> Path:
         """Saves a concise model-level summary."""
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         category_stats = report.get_category_stats()
-        
+
         # Aggregate turn counts using category_stats
         total_turns = sum(stats["total_turns"] for stats in category_stats.values())
         avg_turns = total_turns / report.total_tasks if report.total_tasks > 0 else 0
@@ -249,11 +253,11 @@ class ResultsReporter:
                 "total_tokens": report.total_tokens,
                 "avg_input_tokens": round(report.avg_input_tokens, 2),
                 "avg_output_tokens": round(report.avg_output_tokens, 2),
-                "avg_total_tokens": round(report.avg_total_tokens, 2)
+                "avg_total_tokens": round(report.avg_total_tokens, 2),
             },
             "turn_usage": {
                 "total_turns": total_turns,
-                "avg_turns": round(avg_turns, 2)
+                "avg_turns": round(avg_turns, 2),
             },
             "category_breakdown": {
                 category: {
@@ -266,18 +270,17 @@ class ResultsReporter:
                         "total": stats["total_tokens"],
                         "avg_input": round(stats["avg_input_tokens"], 2),
                         "avg_output": round(stats["avg_output_tokens"], 2),
-                        "avg_total": round(stats["avg_total_tokens"], 2)
+                        "avg_total": round(stats["avg_total_tokens"], 2),
                     },
                     "turn_usage": {
                         "total_turns": stats["total_turns"],
-                        "avg_turns": round(stats["avg_turns"], 2)
+                        "avg_turns": round(stats["avg_turns"], 2),
                     },
                 }
                 for category, stats in category_stats.items()
-            }
+            },
         }
-        
+
         with output_path.open("w", encoding="utf-8") as f:
             json.dump(summary, f, indent=2, ensure_ascii=False)
         return output_path
-
