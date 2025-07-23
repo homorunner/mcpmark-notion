@@ -96,7 +96,7 @@ def main() -> None:
                     pass
         if not success_browsers:
             print("❌ Login state appears to be invalid in both Chromium and Firefox.")
-            print("Please run `python notion_login.py` again.")
+            print("Please run `python -m src.mcp_services.notion.notion_login_helper --browser {firefox|chromium}` again.")
             sys.exit(1)
         elif len(success_browsers) == len(browsers_to_try):
             print("✅ Login state validated in both Chromium and Firefox.")
