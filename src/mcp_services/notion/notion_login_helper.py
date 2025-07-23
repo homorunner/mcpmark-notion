@@ -7,6 +7,7 @@ This module provides a utility class and CLI script for logging into Notion
 using Playwright. It saves the authenticated session state to a file,
 which can be used for subsequent automated tasks.
 """
+
 import argparse
 from pathlib import Path
 from typing import Optional
@@ -59,9 +60,7 @@ class NotionLoginHelper(BaseLoginHelper):
         self.headless = headless
         self.browser_name = browser
         self.state_path = (
-            Path(state_path or Path.cwd() / "notion_state.json")
-            .expanduser()
-            .resolve()
+            Path(state_path or Path.cwd() / "notion_state.json").expanduser().resolve()
         )
         self._browser_context: Optional[BrowserContext] = None
         self._playwright = None
@@ -141,7 +140,9 @@ class NotionLoginHelper(BaseLoginHelper):
 
         email = input("Enter your Notion email address: ").strip()
         try:
-            email_input = page.locator('input[placeholder="Enter your email address..."]')
+            email_input = page.locator(
+                'input[placeholder="Enter your email address..."]'
+            )
             email_input.wait_for(state="visible", timeout=120_000)
             email_input.fill(email)
             email_input.press("Enter")

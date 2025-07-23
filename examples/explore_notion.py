@@ -4,8 +4,8 @@ A small CLI helper to quickly inspect the structure and contents of a Notion pag
 by providing its title.
 
 Usage examples:
-    python explore_notion.py --title "My Project" --type page
-    python explore_notion.py --title "Tasks" --type database --show-rows --max-rows 10
+    python -m examples.explore_notion --title "My Project" --type page
+    python -m examples.explore_notion --title "Tasks" --type database --show-rows --max-rows 10
 
 The script relies on an environment variable NOTION_API_KEY set in a .env file at the project
 root (handled by tasks.utils.notion_utils.get_notion_client).
