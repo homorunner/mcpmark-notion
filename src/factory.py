@@ -118,13 +118,33 @@ class GitHubServiceFactory(ServiceFactory):
     """Factory for creating GitHub-specific managers."""
 
     def create_task_manager(self, config: ServiceConfig, **kwargs) -> BaseTaskManager:
-        raise NotImplementedError("GitHub task manager not yet implemented.")
+        from src.mcp_services.github.github_task_manager import GitHubTaskManager
+
+        return GitHubTaskManager(
+            tasks_root=kwargs.get("tasks_root"),
+            model_name=kwargs.get("model_name"),
+            api_key=kwargs.get("api_key"),
+            base_url=kwargs.get("base_url"),
+            github_token=config.api_key,  # GitHub uses the primary API key
+            timeout=kwargs.get("timeout", 600),
+        )
 
     def create_state_manager(self, config: ServiceConfig, **kwargs) -> BaseStateManager:
-        raise NotImplementedError("GitHub state manager not yet implemented.")
+        from src.mcp_services.github.github_state_manager import GitHubStateManager
+
+        return GitHubStateManager(
+            github_token=config.api_key,
+            base_repo_owner="mcpbench",  # 使用默认值
+            test_org="mcpbench-eval",    # 使用默认值
+        )
 
     def create_login_helper(self, config: ServiceConfig, **kwargs) -> BaseLoginHelper:
-        raise NotImplementedError("GitHub login helper not yet implemented.")
+        from src.mcp_services.github.github_login_helper import GitHubLoginHelper
+
+        return GitHubLoginHelper(
+            token=config.api_key,
+            state_path=kwargs.get("state_path"),
+        )
 
 
 class PostgreSQLServiceFactory(ServiceFactory):
@@ -158,7 +178,9 @@ class MCPServiceFactory:
         },
         "github": {
             "api_key_var": "GITHUB_TOKEN",
-            "additional_vars": {"username": "GITHUB_USERNAME", "repo": "GITHUB_REPO"},
+            "additional_vars": {
+                # These are optional for basic testing
+            },
         },
         "postgres": {
             "api_key_var": "POSTGRES_PASSWORD",
@@ -174,7 +196,7 @@ class MCPServiceFactory:
     SERVICE_FACTORIES = {
         "notion": NotionServiceFactory(),
         "github": GitHubServiceFactory(),
-        "postgres": PostgreSQLServiceFactory(),
+        # "postgres": PostgreSQLServiceFactory(),
     }
 
     @classmethod
