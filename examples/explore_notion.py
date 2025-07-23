@@ -23,6 +23,7 @@ try:
 except ModuleNotFoundError:
     # Fallback: allow running when executed from within the tasks directory
     import os
+
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "tasks")))
     from utils import notion_utils as nutils  # type: ignore
 
@@ -30,11 +31,13 @@ except ModuleNotFoundError:
 def _print_rich_text(rich_text_list):
     return "".join([rt.get("plain_text", "") for rt in rich_text_list])
 
+
 # Helper to truncate/preview a string to a given length
 def _preview(text: str, length: int) -> str:
     if length <= 0:
         return ""
     return text[:length]
+
 
 # Convert a property object to a plain string for preview purposes
 def _property_to_str(prop: dict) -> str:
@@ -77,7 +80,7 @@ def _print_block_recursive(notion: Client, block_id: str, indent: int = 0, previ
     try:
         children = notion.blocks.children.list(block_id=block_id).get("results", [])
     except Exception as exc:
-        print(f"  {'  '*indent}(Failed to fetch children: {exc})")
+        print(f"  {'  ' * indent}(Failed to fetch children: {exc})")
         return
 
     for child in children:
@@ -138,7 +141,7 @@ def explore_database(
 
     rows = rows_response.get("results", [])
     if max_rows is not None:
-        rows = rows[: max_rows]
+        rows = rows[:max_rows]
 
     for idx, row in enumerate(rows, 1):
         row_props = row.get("properties", {})
@@ -164,8 +167,14 @@ def explore_database(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Explore a Notion page or database by title.")
-    parser.add_argument("--title", required=True, help="Title (or partial title) of the page/database to explore.")
+    parser = argparse.ArgumentParser(
+        description="Explore a Notion page or database by title."
+    )
+    parser.add_argument(
+        "--title",
+        required=True,
+        help="Title (or partial title) of the page/database to explore.",
+    )
     parser.add_argument(
         "--type",
         choices=["page", "database"],
@@ -215,4 +224,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main() 
+    main()

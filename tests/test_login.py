@@ -18,6 +18,7 @@ Example usage
     # Verify login state in a visible browser window
     python tests/test_login.py --gui
 """
+
 from __future__ import annotations
 
 import argparse
@@ -110,4 +111,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main() 
+    main()

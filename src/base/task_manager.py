@@ -86,4 +86,3 @@ class BaseTaskManager(ABC):
     def execute_task(self, task: BaseTask) -> BaseTaskResult:
         """Executes a single task and returns its result."""
         pass
-    

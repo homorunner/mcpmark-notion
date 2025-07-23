@@ -6,6 +6,7 @@ Model Configuration for MCPBench
 This module provides configuration management for different LLM models,
 automatically detecting the required API keys and base URLs based on the model name.
 """
+
 import os
 from typing import Dict, List
 
@@ -118,10 +119,10 @@ class ModelConfig:
     def __init__(self, model_name: str):
         """
         Initializes the model configuration.
-        
+
         Args:
             model_name: The name of the model (e.g., 'gpt-4o', 'deepseek-chat').
-            
+
         Raises:
             ValueError: If the model is not supported or environment variables are missing.
         """

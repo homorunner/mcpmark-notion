@@ -6,6 +6,7 @@ Notion State Manager for MCPBench
 This module handles the duplication and management of Notion templates
 Pages for consistent task evaluation using Playwright automation.
 """
+
 import os
 import time
 from pathlib import Path
@@ -90,7 +91,10 @@ class NotionStateManager(BaseStateManager):
         """
         template_id = task.duplicated_template_id
         if not template_id:
-            logger.warning("No duplicated template ID found for task %s, skipping cleanup.", task.name)
+            logger.warning(
+                "No duplicated template ID found for task %s, skipping cleanup.",
+                task.name,
+            )
             return False
 
         try:
@@ -265,7 +269,7 @@ class NotionStateManager(BaseStateManager):
             original_url = page.url
             logger.info("- Waiting for duplicated template to load (up to %.1f s)...", wait_timeout / 1000)
             page.wait_for_url(lambda url: url != original_url, timeout=wait_timeout)
-            
+
             # wait for the page to fully load
             time.sleep(5)
             duplicated_url = page.url
@@ -281,14 +285,14 @@ class NotionStateManager(BaseStateManager):
                 raise RuntimeError("Duplicate URL pattern mismatch – duplication likely failed")
 
             duplicated_template_id = self._extract_template_id_from_url(duplicated_url)
-            
+
             # Always move to evaluation parent
             self._move_current_page_to_env(page, wait_timeout=wait_timeout)
 
             # Rename if new title is provided
             if new_title:
                 self._rename_template_via_api(duplicated_template_id, new_title)
-                
+
             # verify whether the page is moved to the evaluation parent page
             try:
                 result = self.eval_notion_client.pages.retrieve(page_id=duplicated_template_id)
@@ -404,7 +408,7 @@ class NotionStateManager(BaseStateManager):
                 if attempt < max_retries:
                     logger.warning("⚠️ Duplication attempt %d failed: %s. Retrying...", attempt + 1, e)
                 time.sleep(120 * attempt + 120)
-        
+
         raise RuntimeError(
             f"Template duplication failed for task '{task_name}' after {max_retries + 1} attempts: {last_exc}"
         )

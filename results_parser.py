@@ -17,6 +17,7 @@ import src.evaluator
 
 # Simple ANSI color helper (no extra dependency required)
 
+
 class ANSI:
     CYAN = "\033[96m"
     GREEN = "\033[92m"
@@ -31,6 +32,7 @@ def warn(msg: str):
 def info(msg: str):
     """Print info message with [INFO] prefix."""
     print(f"[INFO] {msg}")
+
 
 # ---------------------------------------------------------------------------
 # Task discovery helpers
@@ -49,7 +51,7 @@ def discover_all_tasks(service: str, tasks_root: Path = Path("tasks")) -> Set[st
         return expected
 
     for category_dir in service_root.iterdir():
-        if not category_dir.is_dir() or category_dir.name.startswith('.'):
+        if not category_dir.is_dir() or category_dir.name.startswith("."):
             continue
 
         category_dash = category_dir.name.replace("_", "-")
@@ -161,13 +163,17 @@ def plot_metrics(metrics: Dict[str, Dict[str, float]], exp_name: str, service: s
     fig, ax1 = plt.subplots(figsize=(fig_width, 6))
 
     # Success rate (left y-axis)
-    bars_success = ax1.bar(x - width/2, success_rates, width, color=success_color, label="Success Rate")
+    bars_success = ax1.bar(
+        x - width / 2, success_rates, width, color=success_color, label="Success Rate"
+    )
     ax1.set_ylabel("Success Rate")
     ax1.set_ylim(0, 1)
 
     # Avg token usage (right y-axis)
     ax2 = ax1.twinx()
-    bars_tokens = ax2.bar(x + width/2, avg_tokens, width, color=token_color, label="Avg Tokens")
+    bars_tokens = ax2.bar(
+        x + width / 2, avg_tokens, width, color=token_color, label="Avg Tokens"
+    )
     ax2.set_ylabel("Average Tokens")
 
     # Annotate avg turns on token bars
@@ -188,11 +194,25 @@ def plot_metrics(metrics: Dict[str, Dict[str, float]], exp_name: str, service: s
     ax1.set_xticklabels(models, rotation=45, ha="right")
     ax1.set_xlabel("Model")
     plt.suptitle(f"{exp_name} – {service} Summary", fontsize=16, fontweight="bold")
-    plt.title("Numbers above token bars indicate average turns", fontsize=10, style="italic", pad=20)
+    plt.title(
+        "Numbers above token bars indicate average turns",
+        fontsize=10,
+        style="italic",
+        pad=20,
+    )
 
     # Legend (positioned to avoid overlap with subtitle)
-    handles = [Patch(color=success_color, label="Success Rate"), Patch(color=token_color, label="Avg Tokens")]
-    ax1.legend(handles=handles, loc="upper center", bbox_to_anchor=(0.5, 1.25), ncol=2, frameon=False)
+    handles = [
+        Patch(color=success_color, label="Success Rate"),
+        Patch(color=token_color, label="Avg Tokens"),
+    ]
+    ax1.legend(
+        handles=handles,
+        loc="upper center",
+        bbox_to_anchor=(0.5, 1.25),
+        ncol=2,
+        frameon=False,
+    )
 
     # Add some padding around the plot
     plt.subplots_adjust(top=0.82, bottom=0.15)
@@ -210,11 +230,29 @@ def plot_metrics(metrics: Dict[str, Dict[str, float]], exp_name: str, service: s
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Parse experiment results and visualize metrics.")
-    parser.add_argument("--exp-name", required=True, help="Name of the experiment folder inside ./results, e.g. MCP-RUN-FINAL")
-    parser.add_argument("--service", required=True, help="Service prefix to filter model folders, e.g. notion")
-    parser.add_argument("--results-dir", default="results", help="Root results directory (default: ./results)")
-    parser.add_argument("--show", action="store_true", help="Display the plot interactively in addition to saving it")
+    parser = argparse.ArgumentParser(
+        description="Parse experiment results and visualize metrics."
+    )
+    parser.add_argument(
+        "--exp-name",
+        required=True,
+        help="Name of the experiment folder inside ./results, e.g. MCP-RUN-FINAL",
+    )
+    parser.add_argument(
+        "--service",
+        required=True,
+        help="Service prefix to filter model folders, e.g. notion",
+    )
+    parser.add_argument(
+        "--results-dir",
+        default="results",
+        help="Root results directory (default: ./results)",
+    )
+    parser.add_argument(
+        "--show",
+        action="store_true",
+        help="Display the plot interactively in addition to saving it",
+    )
 
     args = parser.parse_args()
 
@@ -224,7 +262,8 @@ def main():
 
     # Identify model directories starting with the given service prefix
     model_dirs = [
-        d for d in os.listdir(exp_path)
+        d
+        for d in os.listdir(exp_path)
         if os.path.isdir(os.path.join(exp_path, d)) and d.startswith(args.service)
     ]
 
@@ -237,10 +276,16 @@ def main():
     metrics: Dict[str, Dict[str, float]] = {}
 
     for model_dir in model_dirs:
-        model_name = model_dir.split("_", 1)[1] if "_" in model_dir else model_dir[len(args.service):]
+        model_name = (
+            model_dir.split("_", 1)[1]
+            if "_" in model_dir
+            else model_dir[len(args.service) :]
+        )
         model_path = os.path.join(exp_path, model_dir)
 
-        is_valid, model_metrics, _ = validate_and_gather_metrics(model_path, expected_tasks)
+        is_valid, model_metrics, _ = validate_and_gather_metrics(
+            model_path, expected_tasks
+        )
 
         if is_valid and model_metrics is not None:
             metrics[model_name] = model_metrics
@@ -266,4 +311,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main() 
+    main()
