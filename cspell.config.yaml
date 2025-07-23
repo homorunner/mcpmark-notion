@@ -1,0 +1,11 @@
+version: "0.2"
+ignorePaths: []
+dictionaryDefinitions: []
+dictionaries: []
+words:
+  - domcontentloaded
+  - pixi
+  - pypi
+  - topbar
+ignoreWords: []
+import: []
