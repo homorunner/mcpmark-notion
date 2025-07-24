@@ -165,6 +165,28 @@ class MCPAgent:
                 client_session_timeout_seconds=120
             )
 
+        elif self.service == "filesystem":
+            # Filesystem MCP server configuration
+            # Get test directory from service_config or environment
+            test_dir = service_config.get("test_directory", os.getenv("FILESYSTEM_TEST_DIR", "/tmp"))
+            
+            return MCPServerStdio(
+                params={
+                    "command": "npx",
+                    "args": [
+                        "-y",
+                        "@modelcontextprotocol/server-filesystem",
+                        test_dir  # Pass the allowed directory
+                    ],
+                    "env": {
+                        **os.environ,
+                        "NODE_ENV": "production"
+                    }
+                },
+                name="Filesystem MCP Server",
+                cache_tools_list=True,
+            )
+        
         elif self.service == "postgres":
             # PostgreSQL MCP server configuration (placeholder)
             raise NotImplementedError("PostgreSQL MCP server not yet implemented")

@@ -11,7 +11,7 @@ import os
 import shutil
 import tempfile
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from src.base.state_manager import BaseStateManager
 from src.base.task_manager import BaseTask
@@ -40,7 +40,7 @@ class FilesystemStateManager(BaseStateManager):
             test_root: Root directory for test operations (from FILESYSTEM_TEST_ROOT env var)
             cleanup_on_exit: Whether to clean up test directories after tasks
         """
-        super().__init__()
+        super().__init__(service_name="filesystem")
         
         # Use provided test root or create in temp directory
         if test_root:
@@ -247,3 +247,63 @@ class FilesystemStateManager(BaseStateManager):
         except Exception as e:
             logger.error(f"Force cleanup failed: {e}")
             return False
+    
+    # =========================================================================
+    # Abstract Method Implementations Required by BaseStateManager
+    # =========================================================================
+    
+    def _create_initial_state(self, task: BaseTask) -> Optional[Dict[str, Any]]:
+        """Create initial state for a task.
+        
+        For filesystem, this is handled in set_up() method by creating task directories.
+        Returns the task directory path as state info.
+        """
+        if self.current_task_dir and self.current_task_dir.exists():
+            return {"task_directory": str(self.current_task_dir)}
+        return None
+    
+    def _store_initial_state_info(self, task: BaseTask, state_info: Dict[str, Any]) -> None:
+        """Store initial state information in the task object.
+        
+        For filesystem, we store the test directory path.
+        """
+        if state_info and "task_directory" in state_info:
+            if hasattr(task, '__dict__'):
+                task.test_directory = state_info["task_directory"]
+    
+    def _cleanup_task_initial_state(self, task: BaseTask) -> bool:
+        """Clean up initial state for a specific task.
+        
+        For filesystem, this means removing the task directory.
+        """
+        if hasattr(task, 'test_directory') and task.test_directory:
+            task_dir = Path(task.test_directory)
+            if task_dir.exists():
+                try:
+                    shutil.rmtree(task_dir)
+                    logger.info(f"Cleaned up task directory: {task_dir}")
+                    return True
+                except Exception as e:
+                    logger.error(f"Failed to clean up task directory: {e}")
+                    return False
+        return True
+    
+    def _cleanup_single_resource(self, resource: Dict[str, Any]) -> bool:
+        """Clean up a single tracked resource.
+        
+        For filesystem, resources are paths to files/directories.
+        """
+        if "path" in resource:
+            resource_path = Path(resource["path"])
+            if resource_path.exists():
+                try:
+                    if resource_path.is_dir():
+                        shutil.rmtree(resource_path)
+                    else:
+                        resource_path.unlink()
+                    logger.info(f"Cleaned up resource: {resource_path}")
+                    return True
+                except Exception as e:
+                    logger.error(f"Failed to clean up {resource_path}: {e}")
+                    return False
+        return True

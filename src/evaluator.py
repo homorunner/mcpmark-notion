@@ -1,6 +1,7 @@
 import time
 import json
 import shutil
+import os
 
 from datetime import datetime
 from pathlib import Path
@@ -173,7 +174,7 @@ class MCPEvaluator:
         task_instruction = self.task_manager.get_task_instruction(task)
         
         # Prepare service-specific configuration for agent
-        service_config = self._get_service_config_for_agent()
+        service_config = self._get_service_config_for_agent(task)
         
         # Execute with agent
         agent_result = self.agent.execute_sync(task_instruction, **service_config)
@@ -188,9 +189,12 @@ class MCPEvaluator:
 
         return result
     
-    def _get_service_config_for_agent(self) -> dict:
+    def _get_service_config_for_agent(self, task=None) -> dict:
         """
         Get service-specific configuration for agent execution.
+        
+        Args:
+            task: The task being executed (optional, needed for filesystem service)
         
         Returns:
             Dictionary containing service-specific configuration
@@ -203,6 +207,23 @@ class MCPEvaluator:
         elif self.service == "github":
             # For GitHub, we need the GitHub token
             service_config["github_token"] = MCPServiceFactory.create_service_config("github").api_key
+        elif self.service == "filesystem":
+            # For filesystem, get the test directory from the task or state manager
+            test_dir = None
+            
+            # First check if task has test_directory attribute (set by state manager)
+            if task and hasattr(task, 'test_directory'):
+                test_dir = task.test_directory
+            # Fallback to state manager's current test directory
+            elif hasattr(self.state_manager, 'get_test_directory'):
+                test_dir_path = self.state_manager.get_test_directory()
+                if test_dir_path:
+                    test_dir = str(test_dir_path)
+            
+            if test_dir:
+                service_config["test_directory"] = test_dir
+                # Also set environment variable for verification scripts
+                os.environ["FILESYSTEM_TEST_DIR"] = test_dir
         elif self.service == "postgres":
             # For PostgreSQL (placeholder)
             pass
