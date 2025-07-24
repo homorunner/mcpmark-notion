@@ -94,22 +94,28 @@ class NotionServiceFactory(ServiceFactory):
     def create_state_manager(self, config: ServiceConfig, **kwargs) -> BaseStateManager:
         from src.mcp_services.notion.notion_state_manager import NotionStateManager
 
+        # Read browser configuration from environment variable
+        browser = os.getenv("PLAYWRIGHT_BROWSER", "firefox")
+
         return NotionStateManager(
             source_notion_key=config.config["source_api_key"],
             eval_notion_key=config.config["eval_api_key"],
             model_name=kwargs.get("model_name", "default"),
             headless=kwargs.get("headless", True),
-            browser=kwargs.get("browser", "firefox"),
+            browser=browser,
             eval_parent_page_title=config.config["eval_parent_page_title"],
         )
 
     def create_login_helper(self, config: ServiceConfig, **kwargs) -> BaseLoginHelper:
         from src.mcp_services.notion.notion_login_helper import NotionLoginHelper
 
+        # Read browser configuration from environment variable
+        browser = os.getenv("PLAYWRIGHT_BROWSER", "firefox")
+
         return NotionLoginHelper(
             url=kwargs.get("url"),
             headless=kwargs.get("headless", True),
-            browser=kwargs.get("browser", "firefox"),
+            browser=browser,
             state_path=kwargs.get("state_path"),
         )
 

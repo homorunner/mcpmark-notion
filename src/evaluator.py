@@ -26,7 +26,6 @@ class MCPEvaluator:
         service: str,
         model: str,
         timeout: int = 300,
-        browser: str = "chromium",
         exp_name: str = "test-run",
         output_dir: Path = None,
     ):
@@ -34,7 +33,6 @@ class MCPEvaluator:
         self.service = service
         self.model = model
         self.timeout = timeout
-        self.browser = browser
 
         # Initialize model configuration
         model_config = ModelConfig(model)
@@ -51,7 +49,7 @@ class MCPEvaluator:
             timeout=timeout,
         )
         self.state_manager = MCPServiceFactory.create_state_manager(
-            service, model_name=self.actual_model_name, browser=browser
+            service, model_name=self.actual_model_name
         )
 
         # Initialize results reporter
