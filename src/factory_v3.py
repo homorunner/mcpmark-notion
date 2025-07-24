@@ -1,21 +1,15 @@
 #!/usr/bin/env python3
 """
-MCP Service Factory for MCPBench
-=================================
+MCP Service Factory V3 - With Centralized Configuration
+========================================================
 
-This module provides a simplified factory pattern for creating service-specific managers
-with centralized configuration management.
-
-Features:
-- Generic factory with service components registration
-- Centralized configuration with validation
-- Support for env vars, config files, and defaults
-- Backward compatibility maintained
+This module integrates the centralized configuration schema
+with the simplified factory pattern.
 """
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Type
+from typing import Callable, Dict, Optional, Type
 
 from src.base.login_helper import BaseLoginHelper
 from src.base.state_manager import BaseStateManager
