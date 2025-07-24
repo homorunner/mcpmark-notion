@@ -58,13 +58,6 @@ def main():
         "--timeout", type=int, default=300, help="Timeout in seconds for each task"
     )
 
-    # Playwright configuration
-    parser.add_argument(
-        "--browser",
-        default="chromium",
-        choices=["chromium", "firefox"],
-        help="Playwright browser engine to use (default: firefox)",
-    )
 
     # Output configuration
     parser.add_argument(
@@ -101,7 +94,6 @@ def main():
             service=args.service,
             model=model,
             timeout=args.timeout,
-            browser=args.browser,
             exp_name=args.exp_name,
             output_dir=args.output_dir,
         )

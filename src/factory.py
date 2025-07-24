@@ -84,11 +84,6 @@ class NotionServiceFactory(ServiceFactory):
 
         return NotionTaskManager(
             tasks_root=kwargs.get("tasks_root"),
-            model_name=kwargs.get("model_name"),
-            api_key=kwargs.get("api_key"),
-            base_url=kwargs.get("base_url"),
-            notion_key=config.config["eval_api_key"],
-            timeout=kwargs.get("timeout", 600),
         )
 
     def create_state_manager(self, config: ServiceConfig, **kwargs) -> BaseStateManager:
@@ -97,9 +92,8 @@ class NotionServiceFactory(ServiceFactory):
         return NotionStateManager(
             source_notion_key=config.config["source_api_key"],
             eval_notion_key=config.config["eval_api_key"],
-            model_name=kwargs.get("model_name", "default"),
-            headless=kwargs.get("headless", True),
-            browser=kwargs.get("browser", "firefox"),
+            headless=bool(config.config["playwright_headless"]),
+            browser=config.config["playwright_browser"],
             eval_parent_page_title=config.config["eval_parent_page_title"],
         )
 
@@ -108,8 +102,8 @@ class NotionServiceFactory(ServiceFactory):
 
         return NotionLoginHelper(
             url=kwargs.get("url"),
-            headless=kwargs.get("headless", True),
-            browser=kwargs.get("browser", "firefox"),
+            headless=bool(config.config["playwright_headless"]),
+            browser=config.config["playwright_browser"],
             state_path=kwargs.get("state_path"),
         )
 
@@ -122,11 +116,6 @@ class GitHubServiceFactory(ServiceFactory):
 
         return GitHubTaskManager(
             tasks_root=kwargs.get("tasks_root"),
-            model_name=kwargs.get("model_name"),
-            api_key=kwargs.get("api_key"),
-            base_url=kwargs.get("base_url"),
-            github_token=config.api_key,  # GitHub uses the primary API key
-            timeout=kwargs.get("timeout", 600),
         )
 
     def create_state_manager(self, config: ServiceConfig, **kwargs) -> BaseStateManager:
@@ -174,6 +163,8 @@ class MCPServiceFactory:
                 "eval_api_key": "EVAL_NOTION_API_KEY",
                 "source_api_key": "SOURCE_NOTION_API_KEY",
                 "eval_parent_page_title": "EVAL_PARENT_PAGE_TITLE",
+                "playwright_browser": "PLAYWRIGHT_BROWSER",
+                "playwright_headless": "PLAYWRIGHT_HEADLESS",
             },
         },
         "github": {
@@ -278,10 +269,6 @@ def main():
         # Example: Create a task manager for Notion
         task_manager = MCPServiceFactory.create_task_manager(
             "notion",
-            model_name="gpt-4",
-            api_key="test-key",
-            base_url="https://api.example.com",
-            timeout=300,
         )
         logger.info("Created task manager: %s", type(task_manager).__name__)
 

@@ -3,14 +3,13 @@
 Notion State Manager for MCPBench
 =================================
 
-This module handles the duplication and management of Notion templates
+This module handles the duplication and management of Notion initial states
 Pages for consistent task evaluation using Playwright automation.
 """
 
-import os
 import time
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict, Any
 
 from notion_client import Client
 from playwright.sync_api import (
@@ -20,7 +19,8 @@ from playwright.sync_api import (
     sync_playwright,
 )
 
-from src.base.state_manager import BaseStateManager
+from src.base.state_manager import BaseStateManager, InitialStateInfo
+from src.base.task_manager import BaseTask
 from src.logger import get_logger
 from src.mcp_services.notion.notion_task_manager import NotionTask
 import re
@@ -38,14 +38,13 @@ MOVE_TO_SEARCH_INPUT_SELECTOR = 'input[placeholder*="Move page to"], textarea[pl
 
 class NotionStateManager(BaseStateManager):
     """
-    Manages the state of Notion templates using Playwright and the Notion API.
+    Manages the state of Notion initial states using Playwright and the Notion API.
     """
 
     def __init__(
         self,
         source_notion_key: str,
         eval_notion_key: str,
-        model_name: str,
         headless: bool = True,
         browser: str = "firefox",
         eval_parent_page_title: str = "MCPBench Eval Hub",
@@ -54,12 +53,13 @@ class NotionStateManager(BaseStateManager):
         Initializes the Notion state manager.
 
         Args:
-            notion_key: The Notion API key.
-            model_name: The name of the model being evaluated, used for naming templates.
+            source_notion_key: The Notion API key for source workspace.
+            eval_notion_key: The Notion API key for evaluation workspace.
             headless: Whether to run Playwright in headless mode.
             browser: The browser engine to use ('chromium' or 'firefox').
+            eval_parent_page_title: Parent page title for evaluation workspace.
         """
-        super().__init__()
+        super().__init__(service_name="notion")
         supported_browsers = {"chromium", "firefox"}
         if browser not in supported_browsers:
             raise ValueError(
@@ -77,66 +77,115 @@ class NotionStateManager(BaseStateManager):
 
         self.headless = headless
         self.state_file = Path("notion_state.json")
-        self.model_name = model_name
         # Parent page under which duplicated pages should be moved for evaluation
         self.eval_parent_page_title = eval_parent_page_title
+        
+        # Validate initialization
+        if not self.source_notion_client or not self.eval_notion_client:
+            raise ValueError("Both source_notion_key and eval_notion_key must be provided and valid")
+        
+        if not self.state_file.exists():
+            raise FileNotFoundError("Authentication state 'notion_state.json' not found. Run the Notion login helper first.")
+        
+        logger.info("Notion state manager initialized successfully")
+    
+    # =========================================================================
+    # Core Template Methods (Required by BaseStateManager)
+    # =========================================================================
+    
+    def _create_initial_state(self, task: BaseTask) -> Optional[InitialStateInfo]:
+        """Create initial state by duplicating Notion page."""
+        if not isinstance(task, NotionTask):
+            logger.error("Task must be NotionTask for Notion state manager")
+            return None
+        
+        try:
+            initial_state_title = self._category_to_initial_state_title(task.category)
+            initial_state_info = self._find_initial_state_by_title(initial_state_title)
 
-    def initialize(self, **kwargs):
-        """Initializes the state manager (handled in __init__ for this implementation)."""
-        pass
+            if not initial_state_info:
+                logger.error("Initial state not found for category '%s' (title: '%s')", task.category, initial_state_title)
+                return None
 
-    def clean_up(self, task: NotionTask) -> bool:
-        """
-        Archives the duplicated Notion template to clean up the workspace.
-        """
-        template_id = task.duplicated_template_id
-        if not template_id:
-            logger.warning(
-                "No duplicated template ID found for task %s, skipping cleanup.",
-                task.name,
+            _, initial_state_url = initial_state_info
+            
+            duplicated_url, duplicated_id = self._duplicate_initial_state_for_task(
+                initial_state_url, task.category, task.name
             )
+            
+            return InitialStateInfo(
+                state_id=duplicated_id,
+                state_url=duplicated_url,
+                metadata={
+                    'original_url': initial_state_url,
+                    'category': task.category,
+                    'task_name': task.name
+                }
+            )
+            
+        except Exception as e:
+            logger.error(f"Failed to create initial state for {task.name}: {e}")
+            return None
+    
+    def _store_initial_state_info(self, task: BaseTask, state_info: InitialStateInfo) -> None:
+        """Store initial state information in NotionTask object."""
+        if isinstance(task, NotionTask):
+            task.duplicated_initial_state_id = state_info.state_id
+            task.duplicated_initial_state_url = state_info.state_url
+            task.original_initial_state_url = state_info.metadata.get('original_url')
+            
+            # Track the duplicated page for cleanup
+            self.track_resource('page', state_info.state_id, state_info.metadata)
+    
+    def _cleanup_task_initial_state(self, task: BaseTask) -> bool:
+        """Clean up initial state for a specific Notion task."""
+        if not isinstance(task, NotionTask):
+            return True  # Nothing to clean up for non-Notion tasks
+        
+        initial_state_id = task.duplicated_initial_state_id
+        if not initial_state_id:
+            logger.warning("No duplicated initial state ID found for task %s, skipping cleanup.", task.name)
             return False
 
         try:
-            # Since templates are guaranteed to be pages, archive directly via the Pages API.
-            # This operates on the duplicated page in the evaluation workspace.
-            self.eval_notion_client.pages.update(page_id=template_id, archived=True)
-            logger.info("Archived page template: %s", template_id)
+            # Archive the duplicated page
+            self.eval_notion_client.pages.update(page_id=initial_state_id, archived=True)
+            logger.info("Archived page initial state: %s", initial_state_id)
+            
+            # Remove from tracked resources to avoid duplicate cleanup
+            self.tracked_resources = [
+                r for r in self.tracked_resources 
+                if not (r['type'] == 'page' and r['id'] == initial_state_id)
+            ]
+            
             return True
         except Exception as e:
-            logger.error("Failed to archive template %s: %s", template_id, e)
+            logger.error("Failed to archive initial state %s: %s", initial_state_id, e)
             return False
+    
+    def _cleanup_single_resource(self, resource: Dict[str, Any]) -> bool:
+        """Clean up a single Notion resource."""
+        if resource['type'] == 'page':
+            try:
+                self.eval_notion_client.pages.update(page_id=resource['id'], archived=True)
+                logger.info(f"Archived Notion page: {resource['id']}")
+                return True
+            except Exception as e:
+                logger.error(f"Failed to archive Notion page {resource['id']}: {e}")
+                return False
+        
+        logger.warning(f"Unknown resource type for cleanup: {resource['type']}")
+        return False
 
-    def set_up(self, task: NotionTask) -> bool:
-        """
-        Sets up the state for a task by duplicating the relevant Notion template.
-        """
-        template_title = self._category_to_template_title(task.category)
-        template_info = self._find_template_by_title(template_title)
+    # =========================================================================
+    # Notion API Operations
+    # =========================================================================
 
-        if not template_info:
-            logger.error("Template not found for category '%s' (title: '%s')", task.category, template_title)
-            return False
-
-        _, template_url = template_info
-        task.original_template_url = template_url
-
-        try:
-            duplicated_url, duplicated_id = self._duplicate_template_for_task(
-                template_url, task.category, task.name
-            )
-            task.duplicated_template_url = duplicated_url
-            task.duplicated_template_id = duplicated_id
-            return True
-        except Exception as e:
-            logger.error("Failed to duplicate template for %s: %s", task.name, e)
-            return False
-
-    def _rename_template_via_api(self, template_id: str, new_title: str) -> None:
+    def _rename_initial_state_via_api(self, initial_state_id: str, new_title: str) -> None:
         """Renames a Notion page using the API."""
         try:
             self.eval_notion_client.pages.update(
-                page_id=template_id,
+                page_id=initial_state_id,
                 properties={"title": {"title": [{"text": {"content": new_title}}]}},
             )
         except Exception as e:
@@ -145,6 +194,10 @@ class NotionStateManager(BaseStateManager):
     # ------------------------------------------------------------------
     # Playwright helpers
     # ------------------------------------------------------------------
+
+    # =========================================================================
+    # Playwright Automation Methods
+    # =========================================================================
 
     def _move_current_page_to_env(self, page: Page, *, wait_timeout: int = 60_000) -> None:
         """Moves the currently open page into the designated evaluation parent page.
@@ -202,18 +255,22 @@ class NotionStateManager(BaseStateManager):
             # Propagate the error to allow retry logic at higher level if necessary
             raise
 
-    def _category_to_template_title(self, category: str) -> str:
-        """Converts a category name to a capitalized template title."""
+    def _category_to_initial_state_title(self, category: str) -> str:
+        """Converts a category name to a capitalized initial state title."""
         return " ".join(word.capitalize() for word in category.split("_"))
 
-    def _extract_template_id_from_url(self, url: str) -> str:
-        """Extracts the template ID from a Notion URL."""
+    def _extract_initial_state_id_from_url(self, url: str) -> str:
+        """Extracts the initial state ID from a Notion URL."""
         slug = url.split("?")[0].split("#")[0].rstrip("/").split("/")[-1]
         compact = "".join(c for c in slug if c.isalnum())
         if len(compact) < 32:
-            raise ValueError(f"Could not parse template ID from URL: {url}")
+            raise ValueError(f"Could not parse initial state ID from URL: {url}")
         compact = compact[-32:]
         return f"{compact[:8]}-{compact[8:12]}-{compact[12:16]}-{compact[16:20]}-{compact[20:]}"
+
+    # =========================================================================
+    # URL and State Utilities
+    # =========================================================================
 
     def _get_slug_base(self, url: str) -> str:
         """Returns the slug part without its trailing 32-char ID (hyphen separated)."""
@@ -232,7 +289,7 @@ class NotionStateManager(BaseStateManager):
         suffix = dup_base[len(orig_base) + 1 :]
         return suffix.isdigit()
 
-    def _find_template_by_title(self, title: str) -> Optional[Tuple[str, str]]:
+    def _find_initial_state_by_title(self, title: str) -> Optional[Tuple[str, str]]:
         """Finds a Notion page by its exact title"""
         try:
             response = self.source_notion_client.search(query=title, filter={"property": "object", "value": "page"})
@@ -242,21 +299,24 @@ class NotionStateManager(BaseStateManager):
                 if title_prop and "".join(t.get("plain_text", "") for t in title_prop).strip() == title:
                     return result.get("id"), result.get("url")
         except Exception as e:
-            logger.error("Error searching for template '%s': %s", title, e)
+            logger.error("Error searching for initial state '%s': %s", title, e)
         return None
 
-    # NOTE: Template type detection logic has been removed because all templates are pages.
+    # =========================================================================
+    # Duplication and State Management
+    # =========================================================================
+    # NOTE: Initial state type detection logic has been removed because all initial states are pages.
 
-    def _duplicate_current_template(
+    def _duplicate_current_initial_state(
         self,
         page: Page,
         new_title: Optional[str] = None,
         *,
-        original_template_id: str,
-        original_template_title: str,
+        original_initial_state_id: str,
+        original_initial_state_title: str,
         wait_timeout: int = 180_000,
     ) -> str:
-        """Duplicates the currently open Notion template using Playwright."""
+        """Duplicates the currently open Notion initial state using Playwright."""
         try:
             logger.info("- Opening page menu...")
             page.wait_for_selector(PAGE_MENU_BUTTON_SELECTOR, state="visible", timeout=30_000)
@@ -267,7 +327,7 @@ class NotionStateManager(BaseStateManager):
             page.click(DUPLICATE_MENU_ITEM_SELECTOR)
 
             original_url = page.url
-            logger.info("- Waiting for duplicated template to load (up to %.1f s)...", wait_timeout / 1000)
+            logger.info("- Waiting for duplicated initial state to load (up to %.1f s)...", wait_timeout / 1000)
             page.wait_for_url(lambda url: url != original_url, timeout=wait_timeout)
 
             # wait for the page to fully load
@@ -281,21 +341,21 @@ class NotionStateManager(BaseStateManager):
                     duplicated_url,
                 )
                 # Attempt to clean up stray duplicate before propagating error.
-                self._cleanup_orphan_duplicate(original_template_id, original_template_title)
+                self._cleanup_orphan_duplicate(original_initial_state_id, original_initial_state_title)
                 raise RuntimeError("Duplicate URL pattern mismatch – duplication likely failed")
 
-            duplicated_template_id = self._extract_template_id_from_url(duplicated_url)
+            duplicated_initial_state_id = self._extract_initial_state_id_from_url(duplicated_url)
 
             # Always move to evaluation parent
             self._move_current_page_to_env(page, wait_timeout=wait_timeout)
 
             # Rename if new title is provided
             if new_title:
-                self._rename_template_via_api(duplicated_template_id, new_title)
+                self._rename_initial_state_via_api(duplicated_initial_state_id, new_title)
 
             # verify whether the page is moved to the evaluation parent page
             try:
-                result = self.eval_notion_client.pages.retrieve(page_id=duplicated_template_id)
+                result = self.eval_notion_client.pages.retrieve(page_id=duplicated_initial_state_id)
                 if not result or not isinstance(result, dict):
                     logger.error("Playwright move to error: Notion API did not return a valid page dict after move.")
                     raise RuntimeError("Playwright move to error: Notion API did not return a valid page dict after move.")
@@ -304,15 +364,19 @@ class NotionStateManager(BaseStateManager):
                 logger.error(f"Playwright move to error: {move_exc}")
                 raise RuntimeError("Playwright move to error: Notion client failed to retrieve page after move.") from move_exc
 
-            return duplicated_template_id
+            return duplicated_initial_state_id
         except PlaywrightTimeoutError as e:
-            logger.error("Playwright timed out while duplicating template.")
+            logger.error("Playwright timed out while duplicating initial state.")
             raise RuntimeError("Playwright timeout during duplication") from e
+
+    # =========================================================================
+    # Cleanup and Maintenance
+    # =========================================================================
 
     def _cleanup_orphan_duplicate(
         self,
-        original_template_id: str,
-        template_title: str,
+        original_initial_state_id: str,
+        initial_state_title: str,
     ) -> bool:
         """Finds and archives a stray duplicate ("orphan") that matches pattern 'Title (n)'.
 
@@ -320,12 +384,12 @@ class NotionStateManager(BaseStateManager):
         """
         try:
             response = self.source_notion_client.search(
-                query=template_title,
+                query=initial_state_title,
                 filter={"property": "object", "value": "page"},
             )
 
             # Only consider exactly one copy "Title (1)".
-            title_regex = re.compile(rf"^{re.escape(template_title)}\s*\(1\)$")
+            title_regex = re.compile(rf"^{re.escape(initial_state_title)}\s*\(1\)$")
 
             def _extract_title(res):
                 props = res.get("properties", {})
@@ -334,8 +398,8 @@ class NotionStateManager(BaseStateManager):
 
             archived_any = False
             for res in response.get("results", []):
-                if res.get("id") == original_template_id:
-                    continue  # skip the source template
+                if res.get("id") == original_initial_state_id:
+                    continue  # skip the source initial state
 
                 title_plain = _extract_title(res).strip()
                 if not title_regex.match(title_plain):
@@ -353,16 +417,16 @@ class NotionStateManager(BaseStateManager):
             logger.warning("Error while attempting to cleanup orphan duplicate: %s", exc)
             return False
 
-    def _duplicate_template_for_task(
+    def _duplicate_initial_state_for_task(
         self,
-        template_url: str,
+        initial_state_url: str,
         category: str,
         task_name: str,
         *,
         max_retries: int = 2,
         initial_wait_ms: int = 180_000,
     ) -> Tuple[str, str]:
-        """Duplicates a template for a task, with retries for reliability."""
+        """Duplicates an initial state for a task, with retries for reliability."""
         if not self.state_file.exists():
             raise FileNotFoundError(
                 "Authentication state 'notion_state.json' not found. "
@@ -379,20 +443,20 @@ class NotionStateManager(BaseStateManager):
                     context = browser.new_context(storage_state=str(self.state_file))
                     page = context.new_page()
 
-                    logger.info("- Navigating to template for %s...", category)
-                    # Start timing from the moment we begin navigating to the template page.
+                    logger.info("- Navigating to initial state for %s...", category)
+                    # Start timing from the moment we begin navigating to the initial state page.
                     start_time = time.time()
-                    page.goto(template_url, wait_until="load", timeout=60_000)
+                    page.goto(initial_state_url, wait_until="load", timeout=60_000)
                     context.storage_state(path=str(self.state_file))
 
-                    template_id = self._extract_template_id_from_url(template_url)
-                    template_title = self._category_to_template_title(category)
+                    initial_state_id = self._extract_initial_state_id_from_url(initial_state_url)
+                    initial_state_title = self._category_to_initial_state_title(category)
 
-                    duplicated_id = self._duplicate_current_template(
+                    duplicated_id = self._duplicate_current_initial_state(
                         page,
-                        new_title=template_title,  # Use original template name without (1) suffix
-                        original_template_id=template_id,
-                        original_template_title=template_title,
+                        new_title=initial_state_title,  # Use original initial state name without (1) suffix
+                        original_initial_state_id=initial_state_id,
+                        original_initial_state_title=initial_state_title,
                         wait_timeout=wait_timeout,
                     )
                     duplicated_url = page.url
@@ -400,7 +464,7 @@ class NotionStateManager(BaseStateManager):
                     context.storage_state(path=str(self.state_file))
                     # Log how long the whole duplication (navigate → duplicate) took.
                     elapsed = time.time() - start_time
-                    logger.info("✅ Template duplicated successfully in %.2f seconds (task: %s).", elapsed, task_name)
+                    logger.info("✅ Initial state duplicated successfully in %.2f seconds (task: %s).", elapsed, task_name)
                     return duplicated_url, duplicated_id
             except Exception as e:
                 # No additional cleanup here—handled inside _duplicate_current_template.
@@ -410,5 +474,5 @@ class NotionStateManager(BaseStateManager):
                 time.sleep(120 * attempt + 120)
 
         raise RuntimeError(
-            f"Template duplication failed for task '{task_name}' after {max_retries + 1} attempts: {last_exc}"
+            f"Initial state duplication failed for task '{task_name}' after {max_retries + 1} attempts: {last_exc}"
         )

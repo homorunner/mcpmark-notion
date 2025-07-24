@@ -7,12 +7,10 @@ This module handles GitHub repository state management for consistent task evalu
 Manages test repositories, branches, and cleanup after evaluation.
 """
 
-import os
 import requests
 from typing import Optional, Dict, Any
-from pathlib import Path
 
-from src.base.state_manager import BaseStateManager
+from src.base.state_manager import BaseStateManager, InitialStateInfo
 from src.base.task_manager import BaseTask
 from src.logger import get_logger
 
@@ -30,24 +28,27 @@ class GitHubStateManager(BaseStateManager):
         base_repo_owner: str = "mcpbench",
         test_org: str = "mcpbench-eval",
         test_repo_prefix: str = "test-",
+        initial_state_org: str = "arvinxx",
     ):
         """
         Initialize GitHub state manager.
         
         Args:
             github_token: GitHub Personal Access Token
-            base_repo_owner: Owner of base template repositories
+            base_repo_owner: Owner of base initial state repositories  
             test_org: Organization for test repositories
             test_repo_prefix: Prefix for test repository names
+            initial_state_org: Organization containing initial state repositories
         """
-        super().__init__()
+        super().__init__(service_name="github")
         
         self.github_token = github_token
         self.base_repo_owner = base_repo_owner
         self.test_org = test_org
         self.test_repo_prefix = test_repo_prefix
+        self.initial_state_org = initial_state_org
         
-        # Set up HTTP session with GitHub API headers
+        # Set up HTTP session for GitHub API
         self.session = requests.Session()
         self.session.headers.update({
             "Authorization": f"Bearer {github_token}",
@@ -56,13 +57,8 @@ class GitHubStateManager(BaseStateManager):
             "User-Agent": "MCPBench/1.0"
         })
         
-        # Store created resources for cleanup
-        self.created_resources = []
-
-    def initialize(self, **kwargs):
-        """Initialize GitHub environment and validate credentials."""
+        # Validate GitHub configuration during initialization
         try:
-            # Validate GitHub token and get user info
             response = self.session.get("https://api.github.com/user")
             if response.status_code != 200:
                 raise ValueError(f"Invalid GitHub token: {response.status_code} {response.text}")
@@ -80,13 +76,26 @@ class GitHubStateManager(BaseStateManager):
                     # Fall back to user account
                     self.test_org = user_info['login']
             
-            return True
+            logger.info("GitHub state manager initialized successfully")
             
         except Exception as e:
-            logger.error(f"GitHub initialization failed: {e}")
-            return False
+            raise RuntimeError(f"GitHub initialization failed: {e}")
+        
+        # Initial state mapping - categories to initial state repositories
+        self.initial_state_mapping = {
+            "basic_repo_operations": None,  # Basic operations don't need initial state, create empty repo
+            "file_operations": "empty-repo",  # Use arvinxx/empty-repo as base initial state
+            "issue_management": "empty-repo",  # Currently all use empty-repo, can be extended later
+            "pull_request_workflow": "empty-repo", 
+            "branch_management": "empty-repo",
+            "complex_workflows": "empty-repo"
+        }
 
-    def set_up(self, task: BaseTask) -> bool:
+    # =========================================================================
+    # Core Template Methods (Required by BaseStateManager)
+    # =========================================================================
+
+    def _create_initial_state(self, task) -> Optional[InitialStateInfo]:
         """
         Set up GitHub environment for a specific task.
         
@@ -158,6 +167,10 @@ class GitHubStateManager(BaseStateManager):
             logger.error(f"GitHub cleanup failed: {e}")
             return False
 
+    # =========================================================================
+    # Task Requirements Analysis
+    # =========================================================================
+    
     def _task_needs_repo(self, task: BaseTask) -> bool:
         """Determine if a task needs a test repository."""
         # For basic repo operations (like creating repos), we don't need pre-setup
@@ -174,6 +187,10 @@ class GitHubStateManager(BaseStateManager):
         branch_categories = ['branch_management', 'pull_requests']
         return task.category in branch_categories
 
+    # =========================================================================
+    # Repository Creation and Setup Operations
+    # =========================================================================
+    
     def _create_or_get_test_repo(self, repo_name: str, category: str) -> str:
         """Create or get a test repository for the task."""
         # Check if repository already exists
@@ -264,7 +281,10 @@ class GitHubStateManager(BaseStateManager):
             return response.json()['login']
         return None
 
-    # Utility methods for common GitHub operations during task setup
+    # =========================================================================
+    # GitHub API Utility Methods
+    # =========================================================================
+    
     def create_issue(self, repo_owner: str, repo_name: str, title: str, body: str = "") -> Optional[int]:
         """Create an issue in the specified repository."""
         issue_data = {
@@ -311,6 +331,10 @@ class GitHubStateManager(BaseStateManager):
         logger.error(f"Failed to create pull request: {response.text}")
         return None 
 
+    # =========================================================================
+    # Resource Tracking and Cleanup Management
+    # =========================================================================
+    
     def track_created_repository(self, repo_name: str, owner: str = None):
         """追踪任务执行过程中创建的仓库（例如通过MCP工具）"""
         if not owner:
@@ -355,4 +379,341 @@ class GitHubStateManager(BaseStateManager):
                     logger.error(f"Failed to force delete {repo['full_name']}: {e}")
                     success = False
         
-        return success 
+        return success
+    
+    # =========================================================================
+    # Legacy Task Setup Methods (can be deprecated)
+    # =========================================================================
+
+    def set_up(self, task) -> bool:
+        """Create initial state for GitHub task."""
+        try:
+            repo_url = self.create_initial_state_for_task(str(task.task_id), task.category)
+            if not repo_url:
+                return None
+            
+            # Extract repo info for tracking
+            owner, repo_name = self.extract_repo_info_from_url(repo_url)
+            
+            return InitialStateInfo(
+                state_id=f"{owner}/{repo_name}",
+                state_url=repo_url,
+                metadata={
+                    'owner': owner,
+                    'repo_name': repo_name,
+                    'category': task.category,
+                    'task_id': task.task_id
+                }
+            )
+            
+        except Exception as e:
+            logger.error(f"Failed to create GitHub initial state for {task.name}: {e}")
+            return None
+    
+    def _store_initial_state_info(self, task, state_info: InitialStateInfo) -> None:
+        """Store initial state information in task object."""
+        if hasattr(task, 'repository_url'):
+            task.repository_url = state_info.state_url
+        
+        # Track the repository for cleanup
+        self.track_resource('repository', state_info.state_id, state_info.metadata)
+    
+    def _cleanup_task_initial_state(self, task) -> bool:
+        """Clean up initial state for a specific GitHub task."""
+        if hasattr(task, 'repository_url') and task.repository_url:
+            try:
+                owner, repo_name = self.extract_repo_info_from_url(task.repository_url)
+                # Default to deletion (can be configurable later if needed)
+                self._delete_repository(owner, repo_name)
+                logger.info(f"Deleted repository: {owner}/{repo_name}")
+                return True
+            except Exception as e:
+                logger.error(f"Failed to cleanup repository for {task.name}: {e}")
+                return False
+        return True
+    
+    def _cleanup_single_resource(self, resource: Dict[str, Any]) -> bool:
+        """Clean up a single GitHub resource."""
+        if resource['type'] == 'repository':
+            try:
+                repo_id = resource['id']  # format: "owner/repo_name"
+                owner, repo_name = repo_id.split('/', 1)
+                
+                # Default to deletion for simplicity
+                self._delete_repository(owner, repo_name)
+                logger.info(f"Deleted repository: {owner}/{repo_name}")
+                return True
+            except Exception as e:
+                logger.error(f"Failed to cleanup repository {resource['id']}: {e}")
+                return False
+        
+        logger.warning(f"Unknown resource type for cleanup: {resource['type']}")
+        return False
+    
+    # =========================================================================
+    # Initial State Selection and Repository Creation
+    # =========================================================================
+    
+    def select_initial_state_for_task(self, task_category: str) -> Optional[str]:
+        """Select appropriate initial state repository for task category."""
+        return self.initial_state_mapping.get(task_category)
+    
+    def create_initial_state_for_task(self, task_id: str, task_category: str) -> Optional[str]:
+        """Create initial state for task - unified entry point."""
+        initial_state_name = self.select_initial_state_for_task(task_category)
+        
+        try:
+            if initial_state_name and self._can_fork_initial_state(initial_state_name):
+                # If initial state exists and can be forked, use fork mechanism
+                return self.fork_initial_state(initial_state_name, task_id, task_category)
+            else:
+                # Otherwise create basic test repository
+                logger.info(f"Creating new test repository for {task_category} task (initial state not forkable)")
+                return self.create_test_repo_with_content(task_id, task_category)
+                
+        except Exception as e:
+            logger.error(f"Failed to create initial state for task {task_id}: {e}")
+            # Fallback: create basic repository
+            try:
+                logger.info("Falling back to creating basic test repository...")
+                return self.create_test_repo_with_content(task_id, task_category)
+            except Exception as fallback_error:
+                logger.error(f"Fallback also failed: {fallback_error}")
+                return None
+    
+    def fork_initial_state(self, initial_state_name: str, task_id: str, task_category: str) -> str:
+        """Fork initial state repository to user account and rename."""
+        try:
+            # 1. Fork initial state repository
+            fork_url = f"https://api.github.com/repos/{self.initial_state_org}/{initial_state_name}/forks"
+            response = self.session.post(fork_url, json={})
+            
+            if response.status_code not in [200, 202]:
+                raise Exception(f"Failed to fork initial state {initial_state_name}: {response.status_code} {response.text}")
+            
+            fork_data = response.json()
+            original_name = fork_data['name']
+            owner = fork_data['owner']['login']
+            
+            logger.info(f"Forked initial state {initial_state_name} to {owner}/{original_name}")
+            
+            # Note: Resource tracking is handled by the base class template methods
+            
+            # 2. Generate test repository name
+            new_name = self._generate_test_repo_name(task_id, task_category)
+            
+            # 3. Rename to test repository name
+            if new_name != original_name:
+                rename_success = self._rename_repository(owner, original_name, new_name)
+                if rename_success:
+                    logger.info(f"Renamed repository to {owner}/{new_name}")
+                    # Update tracked resource
+                    for resource in self.tracked_resources:
+                        if resource['id'] == f"{owner}/{original_name}":
+                            resource['id'] = f"{owner}/{new_name}"
+                            resource['metadata']['name'] = new_name
+                    return f"https://github.com/{owner}/{new_name}"
+                else:
+                    logger.warning(f"Failed to rename repository, using original name: {owner}/{original_name}")
+            
+            return fork_data['html_url']
+            
+        except Exception as e:
+            logger.error(f"Failed to fork initial state {initial_state_name}: {e}")
+            raise
+    
+    def create_test_repo_with_content(self, task_id: str, task_category: str) -> str:
+        """Create test repository with initial content, replacing empty initial state fork."""
+        try:
+            repo_name = self._generate_test_repo_name(task_id, task_category)
+            
+            # Customize repository content based on task category
+            create_data = {
+                "name": repo_name,
+                "description": f"MCPBench test repository for {task_category} task {task_id}",
+                "private": False,  # Set test repos as public
+                "auto_init": True,  # Auto-create README
+                "has_issues": True,
+                "has_projects": False,
+                "has_wiki": False
+            }
+            
+            # Add different initial content for different task types
+            if task_category in ['issue_management', 'pull_request_workflow']:
+                create_data["has_issues"] = True
+                create_data["has_projects"] = True
+            
+            create_url = "https://api.github.com/user/repos"
+            response = self.session.post(create_url, json=create_data)
+            
+            if response.status_code in [200, 201]:
+                repo_data = response.json()
+                repo_url = repo_data['html_url']
+                owner = repo_data['owner']['login']
+                
+                logger.info(f"Created test repository: {repo_url}")
+                
+                # Note: Resource tracking is handled by the base class template methods
+                
+                # Add initial content for specific task types
+                if task_category != 'basic_repo_operations':
+                    self._setup_initial_content(owner, repo_name, task_category)
+                
+                return repo_url
+            else:
+                raise Exception(f"Failed to create repository: {response.status_code} {response.text}")
+                
+        except Exception as e:
+            logger.error(f"Failed to create test repository with content: {e}")
+            raise
+    
+    def validate_initial_state_repos(self) -> Dict[str, bool]:
+        """Validate that initial state repositories are accessible."""
+        results = {}
+        
+        for category, initial_state_name in self.initial_state_mapping.items():
+            if initial_state_name is None:
+                results[category] = True  # Tasks that don't need initial state
+                continue
+                
+            try:
+                # Check if initial state repository exists
+                check_url = f"https://api.github.com/repos/{self.initial_state_org}/{initial_state_name}"
+                response = self.session.get(check_url)
+                results[category] = response.status_code == 200
+                
+                if response.status_code != 200:
+                    logger.warning(f"Initial state repository {self.initial_state_org}/{initial_state_name} not accessible: {response.status_code}")
+                    
+            except Exception as e:
+                logger.error(f"Failed to validate initial state {initial_state_name}: {e}")
+                results[category] = False
+        
+        return results
+    
+    # =========================================================================
+    # Initial State Validation and Forking Operations
+    # =========================================================================
+    
+    def _can_fork_initial_state(self, initial_state_name: str) -> bool:
+        """Check if initial state repository can be forked (i.e., has Git content)."""
+        try:
+            # Check initial state repository commits
+            commits_url = f"https://api.github.com/repos/{self.initial_state_org}/{initial_state_name}/commits"
+            response = self.session.get(commits_url)
+            
+            if response.status_code == 200:
+                commits = response.json()
+                return len(commits) > 0  # Can only fork if has commits
+            elif response.status_code == 409:
+                # 409 indicates empty repository
+                logger.info(f"Initial state {initial_state_name} is empty and cannot be forked")
+                return False
+            else:
+                logger.warning(f"Cannot check commits for initial state {initial_state_name}: {response.status_code}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Failed to check if initial state {initial_state_name} can be forked: {e}")
+            return False
+    
+    # =========================================================================
+    # Repository Naming and Content Setup Utilities
+    # =========================================================================
+    
+    def _generate_test_repo_name(self, task_id: str, task_category: str) -> str:
+        """Generate test repository name."""
+        import time
+        timestamp = int(time.time())
+        # Format: mcpbench-test-{timestamp}-{category}-{task_id}
+        return f"mcpbench-test-{timestamp}-{task_category}-{task_id}".replace("_", "-")
+    
+    def _rename_repository(self, owner: str, old_name: str, new_name: str) -> bool:
+        """Rename repository."""
+        try:
+            rename_url = f"https://api.github.com/repos/{owner}/{old_name}"
+            rename_data = {"name": new_name}
+            
+            response = self.session.patch(rename_url, json=rename_data)
+            return response.status_code == 200
+            
+        except Exception as e:
+            logger.error(f"Failed to rename repository {owner}/{old_name} to {new_name}: {e}")
+            return False
+    
+    def extract_repo_info_from_url(self, repo_url: str) -> tuple[str, str]:
+        """Extract owner and repo name from GitHub URL."""
+        try:
+            from urllib.parse import urlparse
+            # Support https://github.com/owner/repo format
+            if "github.com" in repo_url:
+                path = urlparse(repo_url).path.strip('/')
+                parts = path.split('/')
+                if len(parts) >= 2:
+                    return parts[0], parts[1]
+            
+            raise ValueError(f"Invalid GitHub URL format: {repo_url}")
+            
+        except Exception as e:
+            logger.error(f"Failed to extract repo info from URL {repo_url}: {e}")
+            raise
+    
+    def _setup_initial_content(self, owner: str, repo_name: str, task_category: str):
+        """Set up initial content for test repository."""
+        try:
+            base_url = f"https://api.github.com/repos/{owner}/{repo_name}"
+            
+            # Add basic files based on task category
+            if task_category == 'file_operations':
+                # Add example file
+                self._create_file(base_url, "src/example.py", "# Example Python file\nprint('Hello MCPBench!')\n")
+                
+            elif task_category == 'issue_management':
+                # Create sample issues
+                self._create_sample_issue(base_url, "Sample Bug Report", "This is a sample issue for testing", ["bug"])
+                self._create_sample_issue(base_url, "Feature Request", "This is a feature request for testing", ["enhancement"])
+                
+            elif task_category == 'pull_request_workflow':
+                # Create branch and PR base structure
+                self._create_file(base_url, "CONTRIBUTING.md", "# Contributing Guide\n\nThank you for contributing!\n")
+                
+            elif task_category == 'branch_management':
+                # Add basic files for branch operations
+                self._create_file(base_url, "docs/README.md", "# Documentation\n\nProject documentation goes here.\n")
+                
+            logger.info(f"Set up initial content for {task_category} task in {owner}/{repo_name}")
+            
+        except Exception as e:
+            logger.warning(f"Failed to setup initial content for {task_category}: {e}")
+            # Don't raise exception, initial content setup failure shouldn't affect whole flow
+    
+    def _create_file(self, base_url: str, file_path: str, content: str):
+        """Create file in repository."""
+        import base64
+        
+        file_url = f"{base_url}/contents/{file_path}"
+        file_data = {
+            "message": f"Add {file_path} for MCPBench testing",
+            "content": base64.b64encode(content.encode()).decode()
+        }
+        
+        response = self.session.patch(file_url, json=file_data)
+        if response.status_code in [200, 201]:
+            logger.debug(f"Created file {file_path}")
+        else:
+            logger.warning(f"Failed to create file {file_path}: {response.status_code}")
+    
+    def _create_sample_issue(self, base_url: str, title: str, body: str, labels: list):
+        """Create sample issue."""
+        issue_url = f"{base_url}/issues"
+        issue_data = {
+            "title": title,
+            "body": body,
+            "labels": labels
+        }
+        
+        response = self.session.post(issue_url, json=issue_data)
+        if response.status_code in [200, 201]:
+            logger.debug(f"Created sample issue: {title}")
+        else:
+            logger.warning(f"Failed to create sample issue: {response.status_code}") 
