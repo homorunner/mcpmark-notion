@@ -358,24 +358,23 @@ class MCPAgent:
             if result["success"]:
                 return result
 
-            # Check for transient network error keywords
-            error_msg = result["error"] or ""
-            transient = any(
-                code in error_msg for code in ("ETIMEDOUT", "ECONNREFUSED", "MCP Network Error")
-            )
-
-            if transient and attempt < self.max_retries:
-                wait_seconds = self.retry_backoff * attempt
+            # Use unified error handling
+            from src.errors import ErrorHandler
+            
+            error_handler = ErrorHandler(service_name=self.service)
+            error_info = error_handler.handle(Exception(result["error"] or "Unknown error"))
+            
+            if error_info.retryable and attempt < self.max_retries:
+                wait_seconds = error_handler.get_retry_delay(error_info, attempt)
                 logger.warning(
-                    f"[Retry] Attempt {attempt}/{self.max_retries} failed with transient error. "
-                    f"Waiting {wait_seconds}s before retrying: {error_msg}"
+                    f"[Retry] Attempt {attempt}/{self.max_retries} failed with {error_info.category.value}. "
+                    f"Waiting {wait_seconds}s before retrying: {error_info.message}"
                 )
                 await asyncio.sleep(wait_seconds)
                 continue  # Retry
 
-            # Out of retries on transient error - normalize error message
-            if transient:
-                result["error"] = "MCP Network Error"
+            # Standardize error message
+            result["error"] = error_info.message
 
             # Non-transient error or out of retry attempts - return last result
             return result

@@ -367,6 +367,5 @@ class BaseTaskManager(ABC):
     
     def _standardize_error_message(self, error_message: str) -> str:
         """Standardize error messages for consistent reporting."""
-        if "MCP" in error_message or "Error invoking MCP" in error_message:
-            return f"{self.service.title()} MCP Network Error"
-        return error_message
+        from src.errors import standardize_error_message
+        return standardize_error_message(error_message, service=self.service)
