@@ -223,3 +223,8 @@ class MCPServiceFactory:
         """Get detailed configuration information for debugging."""
         config = ConfigRegistry.get_config(service_name)
         return config.get_debug_info()
+    
+    @classmethod
+    def get_supported_services(cls) -> list:
+        """Get list of supported services."""
+        return ["notion", "github", "filesystem", "postgres"]
