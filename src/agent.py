@@ -38,10 +38,6 @@ from src.logger import get_logger
 # Initialize logger
 logger = get_logger(__name__)
 
-# Set tracing if available
-set_tracing_export_api_key(os.getenv("OPENAI_TRACE_API_KEY"))
-
-
 class MCPAgent:
     """
     Unified agent for LLM and MCP server management.
@@ -100,14 +96,16 @@ class MCPAgent:
         }
 
         logger.debug(f"Initialized MCPAgent for service '{service}' with model '{model_name}'")
+        set_tracing_export_api_key(os.getenv("OPENAI_TRACE_API_KEY"))
 
     def _create_model_provider(self) -> ModelProvider:
         """Create and return a model provider for the specified model."""
         client = AsyncOpenAI(base_url=self.base_url, api_key=self.api_key)
+        agent_model_name = self.model_name  # Capture the model name from the agent
 
         class CustomModelProvider(ModelProvider):
             def get_model(self, model_name_override: str | None) -> Model:
-                final_model_name = model_name_override or self.model_name
+                final_model_name = model_name_override or agent_model_name
                 return OpenAIChatCompletionsModel(
                     model=final_model_name, openai_client=client
                 )

@@ -52,9 +52,7 @@ class MCPEvaluator:
         
         # Initialize managers using the factory pattern (simplified)
         self.task_manager = MCPServiceFactory.create_task_manager(service)
-        self.state_manager = MCPServiceFactory.create_state_manager(
-            service, model_name=self.actual_model_name
-        )
+        self.state_manager = MCPServiceFactory.create_state_manager(service)
 
         # Initialize results reporter
         self.results_reporter = ResultsReporter()

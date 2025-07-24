@@ -28,9 +28,9 @@ class NotionTask(BaseTask):
     """Represents a single evaluation task for Notion service."""
 
     # Additional Notion-specific fields
-    original_template_url: Optional[str] = None
-    duplicated_template_url: Optional[str] = None
-    duplicated_template_id: Optional[str] = None
+    original_initial_state_url: Optional[str] = None
+    duplicated_initial_state_url: Optional[str] = None
+    duplicated_initial_state_id: Optional[str] = None
 
     def __post_init__(self):
         # Ensure base class fields are set if not provided
@@ -133,7 +133,7 @@ class NotionTaskManager(BaseTaskManager):
         return [
             sys.executable,
             str(task.task_verification_path),
-            task.duplicated_template_id or "",
+            task.duplicated_initial_state_id or "",
         ]
     
     def _format_task_instruction(self, base_instruction: str) -> str:
@@ -142,7 +142,7 @@ class NotionTaskManager(BaseTaskManager):
     
     def _pre_execution_check(self, task: NotionTask) -> Dict[str, Any]:
         """Check if duplication succeeded before execution."""
-        if task.duplicated_template_id is None:
+        if task.duplicated_initial_state_id is None:
             return {
                 "success": False,
                 "error": "Duplication failed"
