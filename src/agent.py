@@ -16,7 +16,7 @@ The agent does NOT handle task-specific logic - that's the responsibility of tas
 import asyncio
 import os
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from agents import (
     Agent,
@@ -26,12 +26,10 @@ from agents import (
     OpenAIChatCompletionsModel,
     RunConfig,
     Runner,
-    ItemHelpers,
     set_tracing_export_api_key,
 )
 from agents.mcp.server import MCPServerStdio, MCPServerStreamableHttp, MCPServerStreamableHttpParams
 from openai import AsyncOpenAI
-from openai.types.responses import ResponseTextDeltaEvent
 
 from src.logger import get_logger
 
@@ -225,46 +223,65 @@ class MCPAgent:
                 # Prepare conversation
                 conversation = [{"content": instruction, "role": "user"}]
 
-                # Run agent with streaming
-                result = Runner.run_streamed(
-                    agent,
-                    max_turns=20,
-                    input=conversation,
-                    run_config=RunConfig(model_provider=self.model_provider),
-                )
+                # Try non-streaming first to avoid logprobs issue
+                try:
+                    # Use non-streaming run
+                    result = await Runner.run(
+                        agent,
+                        max_turns=20,
+                        input=conversation,
+                        run_config=RunConfig(model_provider=self.model_provider),
+                    )
+                    
+                    # Process non-streaming result
+                    print("\n[Agent completed task]")
+                    
+                except Exception as non_streaming_error:
+                    logger.warning(f"Non-streaming failed, falling back to streaming: {non_streaming_error}")
+                    
+                    # Fall back to streaming
+                    result = Runner.run_streamed(
+                        agent,
+                        max_turns=20,
+                        input=conversation,
+                        run_config=RunConfig(model_provider=self.model_provider),
+                    )
 
-                # Add small delay to ensure background task starts
-                await asyncio.sleep(0.1)
+                    # Add small delay to ensure background task starts
+                    await asyncio.sleep(0.1)
 
-                # Process streaming events
-                event_count = 0
-                async for event in result.stream_events():
-                    event_count += 1
-                    logger.debug(f"Event {event_count}: {event}")
+                    # Process streaming events
+                    event_count = 0
+                    async for event in result.stream_events():
+                        event_count += 1
+                        logger.debug(f"Event {event_count}: {event}")
 
-                    # Check if event has type attribute
-                    if hasattr(event, "type"):
-                        logger.debug(f"Event type: {event.type}")
+                        # Check if event has type attribute
+                        if hasattr(event, "type"):
+                            logger.debug(f"Event type: {event.type}")
 
-                        if event.type == "raw_response_event":
-                            if hasattr(event, "data") and isinstance(
-                                event.data, ResponseTextDeltaEvent
-                            ):
-                                # Print token deltas as we receive them
-                                delta_text = event.data.delta
-                                print(delta_text, end="", flush=True)
+                            if event.type == "raw_response_event":
+                                # Handle text delta events without strict type checking
+                                # This avoids pydantic validation errors for missing 'logprobs' field
+                                if (hasattr(event, "data") and 
+                                    hasattr(event.data, "type") and 
+                                    event.data.type == "response.output_text.delta" and
+                                    hasattr(event.data, "delta")):
+                                    # Print token deltas as we receive them
+                                    delta_text = event.data.delta
+                                    print(delta_text, end="", flush=True)
 
-                        elif event.type == "run_item_stream_event":
-                            if hasattr(event, "item"):
-                                if hasattr(event.item, "type"):
-                                    if event.item.type == "tool_call_item":
-                                        tool_name = "Unknown"
-                                        if (
-                                            hasattr(event.item, "raw_item")
-                                            and hasattr(event.item.raw_item, "name")
-                                        ):
-                                            tool_name = event.item.raw_item.name
-                                        logger.info(f"\n-- Calling {self.service.title()} Tool: {tool_name}...")
+                            elif event.type == "run_item_stream_event":
+                                if hasattr(event, "item"):
+                                    if hasattr(event.item, "type"):
+                                        if event.item.type == "tool_call_item":
+                                            tool_name = "Unknown"
+                                            if (
+                                                hasattr(event.item, "raw_item")
+                                                and hasattr(event.item.raw_item, "name")
+                                            ):
+                                                tool_name = event.item.raw_item.name
+                                            logger.info(f"\n-- Calling {self.service.title()} Tool: {tool_name}...")
 
                 # Extract token usage from raw responses
                 token_usage = {}
