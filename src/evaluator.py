@@ -10,6 +10,7 @@ from src.logger import get_logger
 from src.factory import MCPServiceFactory
 from src.model_config import ModelConfig
 from src.results_reporter import EvaluationReport, ResultsReporter, TaskResult
+from src.agent import MCPAgent
 
 PIPELINE_RETRY_ERRORS: List[str] = [
     "State Duplication Error",
@@ -40,14 +41,17 @@ class MCPEvaluator:
         self.base_url = model_config.base_url
         self.api_key = model_config.api_key
 
-        # Initialize managers using the factory pattern
-        self.task_manager = MCPServiceFactory.create_task_manager(
-            service,
+        # Initialize agent for LLM and MCP server management
+        self.agent = MCPAgent(
             model_name=self.actual_model_name,
             api_key=self.api_key,
             base_url=self.base_url,
+            service=service,
             timeout=timeout,
         )
+        
+        # Initialize managers using the factory pattern (simplified)
+        self.task_manager = MCPServiceFactory.create_task_manager(service)
         self.state_manager = MCPServiceFactory.create_state_manager(
             service, model_name=self.actual_model_name
         )
@@ -145,9 +149,9 @@ class MCPEvaluator:
 
     def _run_single_task(self, task) -> TaskResult:
         """
-        Runs a single task, including setup, execution, and cleanup.
+        Runs a single task, including setup, agent execution, verification, and cleanup.
         """
-        # Set up the initial state for the task
+        # Stage 1: Set up the initial state for the task
         setup_start_time = time.time()
         logger.info("==================== Stage 1: Setting Up Task ====================")
         setup_success = self.state_manager.set_up(task)
@@ -164,15 +168,48 @@ class MCPEvaluator:
                 task_id=task.task_id,
             )
 
-        # Execute the task and record the result
-        logger.info("\n==================== Stage 2: Executing Task ======================")
-        result = self.task_manager.execute_task(task)
-
-        # Clean up the temporary task state
-        logger.info("\n==================== Stage 3: Cleaning Up =========================")
+        # Stage 2: Execute the task using the agent
+        logger.info("\n==================== Stage 2: Executing Task =======================")
+        
+        # Get task instruction from task manager
+        task_instruction = self.task_manager.get_task_instruction(task)
+        
+        # Prepare service-specific configuration for agent
+        service_config = self._get_service_config_for_agent()
+        
+        # Execute with agent
+        agent_result = self.agent.execute_sync(task_instruction, **service_config)
+        
+        # Stage 3: Verify the task result using task manager
+        logger.info("\n==================== Stage 3: Verifying Task =======================")
+        result = self.task_manager.execute_task(task, agent_result)
+        
+        # Stage 4: Clean up the temporary task state
+        logger.info("\n==================== Stage 4: Cleaning Up =========================")
         self.state_manager.clean_up(task)
 
         return result
+    
+    def _get_service_config_for_agent(self) -> dict:
+        """
+        Get service-specific configuration for agent execution.
+        
+        Returns:
+            Dictionary containing service-specific configuration
+        """
+        service_config = {}
+        
+        if self.service == "notion":
+            # For Notion, we need the evaluation API key
+            service_config["notion_key"] = MCPServiceFactory.create_service_config("notion").config["eval_api_key"]
+        elif self.service == "github":
+            # For GitHub, we need the GitHub token
+            service_config["github_token"] = MCPServiceFactory.create_service_config("github").api_key
+        elif self.service == "postgres":
+            # For PostgreSQL (placeholder)
+            pass
+            
+        return service_config
 
     def run_evaluation(self, task_filter: str) -> EvaluationReport:
         """

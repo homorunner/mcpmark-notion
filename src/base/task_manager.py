@@ -55,7 +55,10 @@ class BaseTaskResult:
 class BaseTaskManager(ABC):
     """
     Abstract base class for task management in MCP services.
-    Defines the interface for discovering, filtering, and executing tasks.
+    Defines the interface for discovering, filtering, and verifying tasks.
+    
+    Note: Task managers are no longer responsible for LLM execution or MCP server management.
+    Those responsibilities have been moved to independent agent classes.
     """
 
     def __init__(self, tasks_root: Path = None, service: str = "notion"):
@@ -78,11 +81,11 @@ class BaseTaskManager(ABC):
         pass
 
     @abstractmethod
-    async def _create_mcp_server(self):
-        """Creates an MCP server connection for the specific service."""
+    def get_task_instruction(self, task: BaseTask) -> str:
+        """Gets the formatted task instruction for agent execution."""
         pass
 
     @abstractmethod
-    def execute_task(self, task: BaseTask) -> BaseTaskResult:
-        """Executes a single task and returns its result."""
+    def execute_task(self, task: BaseTask, agent_result: dict) -> BaseTaskResult:
+        """Verifies a task using the result from agent execution and returns the final result."""
         pass
