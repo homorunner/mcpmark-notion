@@ -12,17 +12,13 @@ The task manager is responsible for:
 - Task-specific logic (NOT LLM execution)
 """
 
-import subprocess
 import sys
-import tempfile
-import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from src.base.task_manager import BaseTask, BaseTaskManager
 from src.logger import get_logger
-from src.results_reporter import TaskResult
 
 logger = get_logger(__name__)
 
@@ -80,206 +76,78 @@ class NotionTaskManager(BaseTaskManager):
         # Call parent constructor
         super().__init__(tasks_root, service="notion")
 
-        self._tasks_cache = None
-
 
     # =========================================================================
-    # Task Discovery and Management
+    # Service-specific implementations for template methods
     # =========================================================================
-
-    def discover_all_tasks(self) -> List[NotionTask]:
-        """Discover all available tasks in the tasks directory."""
-        if self._tasks_cache is not None:
-            return self._tasks_cache
-
-        tasks = []
-        if not self.tasks_root.exists():
-            return tasks
-
-        # Navigate to the notion subdirectory
-        notion_tasks_root = self.tasks_root / "notion"
-        if not notion_tasks_root.exists():
-            return tasks
-
-        # Iterate through category directories
-        for category_dir in notion_tasks_root.iterdir():
-            if (
-                not category_dir.is_dir()
-                or category_dir.name.startswith(".")
-                or category_dir.name == "utils"
-            ):
+    
+    def _get_service_directory_name(self) -> str:
+        """Return the service directory name for Notion."""
+        return "notion"
+    
+    def _find_task_files(self, category_dir: Path) -> List[Dict[str, Any]]:
+        """Find task files in Notion category directory.
+        
+        Notion tasks are organized as task_X directories with description.md and verify.py.
+        """
+        task_files = []
+        
+        # Find task directories within each category
+        for task_dir in category_dir.iterdir():
+            if not task_dir.is_dir() or not task_dir.name.startswith("task_"):
                 continue
 
-            category = category_dir.name
-
-            # Find task directories within each category
-            for task_dir in category_dir.iterdir():
-                if not task_dir.is_dir() or not task_dir.name.startswith("task_"):
-                    continue
-
-                try:
-                    task_id = int(task_dir.name.split("_")[1])
-                except (IndexError, ValueError):
-                    continue
-
-                description_path = task_dir / "description.md"
-                verify_path = task_dir / "verify.py"
-
-                # Only include tasks that have both description and verify files
-                if description_path.exists() and verify_path.exists():
-                    tasks.append(
-                        NotionTask(
-                            task_instruction_path=description_path,
-                            task_verification_path=verify_path,
-                            service="notion",
-                            category=category,
-                            task_id=task_id,
-                        )
-                    )
-
-        # Sort tasks by category and task_id for consistent ordering
-        tasks.sort(key=lambda t: (t.category, t.task_id))
-        self._tasks_cache = tasks
-        return tasks
-
-    def get_categories(self) -> List[str]:
-        """Get all available task categories."""
-        tasks = self.discover_all_tasks()
-        categories = list(set(task.category for task in tasks))
-        return sorted(categories)
-
-    def filter_tasks(self, task_filter: str) -> List[NotionTask]:
-        """Filter tasks based on the provided filter string."""
-        all_tasks = self.discover_all_tasks()
-
-        if task_filter.lower() == "all":
-            return all_tasks
-
-        # Check if it's a category filter
-        categories = self.get_categories()
-        if task_filter in categories:
-            return [task for task in all_tasks if task.category == task_filter]
-
-        # Check if it's a specific task filter
-        if "/" in task_filter:
             try:
-                category, task_part = task_filter.split("/", 1)
-                if task_part.startswith("task_"):
-                    task_id = int(task_part.split("_")[1])
-                    for task in all_tasks:
-                        if task.category == category and task.task_id == task_id:
-                            return [task]
-            except (ValueError, IndexError):
-                pass
+                task_id = int(task_dir.name.split("_")[1])
+            except (IndexError, ValueError):
+                continue
 
-        # If no matches found, return empty list
-        return []
+            description_path = task_dir / "description.md"
+            verify_path = task_dir / "verify.py"
 
-    def execute_task(self, task: NotionTask, agent_result: Dict[str, Any]) -> TaskResult:
-        """Execute task verification using the result from agent execution.
-
-        Args:
-            task: Task object containing task details
-            agent_result: Result from agent execution containing success, output, token_usage, etc.
-
-        Returns:
-            TaskResult object with execution results
-        """
-        logger.info(f"- Verifying task: {task.name}")
-        start_time = time.time()
-
-        # Check if duplication succeeded
-        if task.duplicated_template_id is None:
-            execution_time = time.time() - start_time
-            return TaskResult(
-                task_name=task.name,
-                success=False,
-                execution_time=execution_time,
-                error_message="Duplication failed",
-                category=task.category,
-                task_id=task.task_id,
-            )
-
-        try:
-            # If agent execution failed, return the failure
-            if not agent_result.get("success", False):
-                execution_time = time.time() - start_time
-                error_message = agent_result.get("error", "Agent execution failed")
-                
-                # Check for MCP network errors
-                if "MCP" in error_message or "Error invoking MCP" in error_message:
-                    error_message = "MCP Network Error"
-                    
-                return TaskResult(
-                    task_name=task.name,
-                    success=False,
-                    execution_time=execution_time,
-                    error_message=error_message,
-                    category=task.category,
-                    task_id=task.task_id,
-                )
-
-            # Run verification
-            logger.info(f"- Running verification for task: {task.name}")
-            verify_result = subprocess.run(
-                [
-                    sys.executable,
-                    str(task.verify_path),
-                    task.duplicated_template_id,
-                ],
-                capture_output=True,
-                text=True,
-                timeout=90,
-            )
-
-            # Process results
-            success = verify_result.returncode == 0
-            error_message = (
-                verify_result.stderr
-                if not success and verify_result.stderr
-                else None
-            )
-            execution_time = time.time() - start_time
-
-            if success:
-                logger.info(f"✓ Verification passed for task: {task.name}")
-            else:
-                logger.error(f"✗ Verification failed for task: {task.name}")
-                logger.error(f"⚠️ Error: {error_message}")
-
-            return TaskResult(
-                task_name=task.name,
-                success=success,
-                execution_time=execution_time,
-                error_message=error_message,
-                model_output=agent_result.get("output", ""),
-                category=task.category,
-                task_id=task.task_id,
-                token_usage=agent_result.get("token_usage", {}),
-                turn_count=agent_result.get("turn_count", -1),
-            )
-
-        except Exception as e:
-            execution_time = time.time() - start_time
-            error_msg = f"Task verification failed: {str(e)}"
-
-            return TaskResult(
-                task_name=task.name,
-                success=False,
-                execution_time=execution_time,
-                error_message=error_msg,
-                category=task.category,
-                task_id=task.task_id,
-            )
-
-    def get_task_instruction(self, task: NotionTask) -> str:
-        """Get the formatted task instruction for agent execution.
+            # Only include tasks that have both description and verify files
+            if description_path.exists() and verify_path.exists():
+                task_files.append({
+                    "task_id": task_id,
+                    "instruction_path": description_path,
+                    "verification_path": verify_path
+                })
         
-        Args:
-            task: The task to get instruction for
-            
-        Returns:
-            Formatted task instruction string
+        return task_files
+    
+    def _create_task_from_files(self, category_name: str, task_files_info: Dict[str, Any]) -> Optional[NotionTask]:
+        """Create a NotionTask from file information."""
+        return NotionTask(
+            task_instruction_path=task_files_info["instruction_path"],
+            task_verification_path=task_files_info["verification_path"],
+            service="notion",
+            category=category_name,
+            task_id=task_files_info["task_id"],
+        )
+    
+    def _get_verification_command(self, task: NotionTask) -> List[str]:
+        """Get the verification command for Notion tasks.
+        
+        Notion verification requires the duplicated template ID.
         """
-        base_instruction = task.get_description()
+        return [
+            sys.executable,
+            str(task.task_verification_path),
+            task.duplicated_template_id or "",
+        ]
+    
+    def _format_task_instruction(self, base_instruction: str) -> str:
+        """Format task instruction with Notion-specific additions."""
         return base_instruction + "\n\nNote: Based on your understanding, solve the task all at once by yourself, don't ask for my opinions on anything."
+    
+    def _pre_execution_check(self, task: NotionTask) -> Dict[str, Any]:
+        """Check if duplication succeeded before execution."""
+        if task.duplicated_template_id is None:
+            return {
+                "success": False,
+                "error": "Duplication failed"
+            }
+        return {"success": True}
+
+    # Note: execute_task and get_task_instruction are now implemented in the base class
+    # Service-specific behavior is handled through the template methods above
