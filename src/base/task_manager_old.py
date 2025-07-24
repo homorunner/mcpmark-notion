@@ -1,80 +1,102 @@
-#!/usr/bin/env python3
-"""
-Enhanced Base Task Manager with Common Task Discovery Logic
-===========================================================
-
-This module provides an improved base class for task managers that consolidates
-common task discovery patterns while maintaining flexibility for service-specific needs.
-"""
-
-import re
 import subprocess
-import sys
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from src.logger import get_logger
 from src.results_reporter import TaskResult
 
+# Initialize logger
 logger = get_logger(__name__)
 
 
 @dataclass
 class BaseTask:
-    """Base class for evaluation tasks."""
+    """
+    Base class for representing a task in the evaluation pipeline.
+    All service-specific task classes should inherit from this.
+    """
+
     task_instruction_path: Path
     task_verification_path: Path
     service: str
     category: str
     task_id: int
-    
+
     @property
     def name(self) -> str:
-        """Return the task name in the format 'category/task_id'."""
+        """Returns the full name of the task (e.g., 'category/task_1')."""
         return f"{self.category}/task_{self.task_id}"
-    
+
     def get_task_instruction(self) -> str:
-        """Return the full text content of the task instruction file."""
-        if not self.task_instruction_path.exists():
-            raise FileNotFoundError(f"Task instruction file not found: {self.task_instruction_path}")
-        
-        return self.task_instruction_path.read_text(encoding="utf-8")
+        """Reads and returns the task instruction from its file."""
+        if self.task_instruction_path.exists():
+            return self.task_instruction_path.read_text(encoding="utf-8")
+        return ""
+
+
+@dataclass
+class BaseTaskResult:
+    """Base class for representing the result of a task."""
+
+    success: bool = False
+    execution_time: float = 0.0
+    service: str = "notion"
+    category: str = "online_resume"
+    task_id: int = 1
+    error_message: Optional[str] = None
+    conversation: Optional[dict] = None
+
+    @property
+    def status(self) -> str:
+        """Returns the status of the task as 'PASS' or 'FAIL'."""
+        return "PASS" if self.success else "FAIL"
 
 
 class BaseTaskManager(ABC):
-    """Enhanced base class for service-specific task managers with common discovery logic."""
+    """
+    Abstract base class for task management in MCP services.
+    Defines the interface for discovering, filtering, and verifying tasks.
     
-    def __init__(self, tasks_root: Path, service: str):
-        """Initialize the base task manager.
-        
-        Args:
-            tasks_root: Root directory containing all tasks
-            service: Service name (e.g., 'notion', 'github', 'filesystem')
-        """
-        self.tasks_root = tasks_root
+    This class implements the Template Method pattern to provide common functionality
+    while allowing service-specific customization through abstract methods.
+    
+    Note: Task managers are no longer responsible for LLM execution or MCP server management.
+    Those responsibilities have been moved to independent agent classes.
+    """
+
+    def __init__(self, tasks_root: Path = None, service: str = "notion"):
+        self.tasks_root = Path(tasks_root) if tasks_root else None
         self.service = service
         self._tasks_cache = None
-    
+
     # =========================================================================
-    # Common Task Discovery Implementation
+    # Template Method Implementation - Common task discovery logic
     # =========================================================================
     
     def discover_all_tasks(self) -> List[BaseTask]:
-        """Discover all available tasks for this service (common implementation)."""
+        """Template method for discovering all available tasks.
+        
+        This method implements the common task discovery pattern and delegates
+        service-specific details to abstract methods.
+        """
         if self._tasks_cache is not None:
             return self._tasks_cache
         
         tasks = []
-        service_dir = self.tasks_root / self._get_service_directory_name()
-        
-        if not service_dir.exists():
-            logger.warning(f"{self.service.title()} tasks directory does not exist: {service_dir}")
+        if not self.tasks_root.exists():
+            logger.warning("Tasks root directory does not exist: %s", self.tasks_root)
             return tasks
         
-        # Scan categories
+        # Get service-specific directory
+        service_dir = self.tasks_root / self._get_service_directory_name()
+        if not service_dir.exists():
+            logger.warning("%s tasks directory does not exist: %s", self.service.title(), service_dir)
+            return tasks
+        
+        # Scan categories using service-specific logic
         for category_dir in service_dir.iterdir():
             if not self._is_valid_category_dir(category_dir):
                 continue
@@ -134,33 +156,12 @@ class BaseTaskManager(ABC):
         
         return filtered_tasks
     
-    # =========================================================================
-    # Common Helper Methods
-    # =========================================================================
-    
-    def extract_task_id(self, filename: str, pattern: Optional[str] = None) -> Optional[int]:
-        """Extract task ID from filename (common implementation).
-        
-        Args:
-            filename: The filename to extract ID from
-            pattern: Optional custom regex pattern (default: r'task_(\\d+)\\.md')
-            
-        Returns:
-            Task ID or None if not found
-        """
-        if pattern is None:
-            pattern = r'task_(\d+)\.md'
-        
-        match = re.match(pattern, filename)
-        return int(match.group(1)) if match else None
-    
-    def get_task_instruction(self, task: BaseTask) -> str:
-        """Get formatted task instruction (template method)."""
-        base_instruction = self._read_task_instruction(task)
-        return self._format_task_instruction(base_instruction)
-    
     def execute_task(self, task: BaseTask, agent_result: Dict[str, Any]) -> TaskResult:
-        """Execute task verification (template method)."""
+        """Template method for task execution and verification.
+        
+        This method implements the common verification pattern and delegates
+        service-specific details to abstract methods.
+        """
         start_time = time.time()
         logger.info(f"- Verifying {self.service.title()} task: {task.name}")
         
@@ -197,7 +198,13 @@ class BaseTaskManager(ABC):
 
             # Run verification using service-specific command
             logger.info(f"- Running verification for task: {task.name}")
-            verify_result = self.run_verification(task)
+            verify_command = self._get_verification_command(task)
+            verify_result = subprocess.run(
+                verify_command,
+                capture_output=True,
+                text=True,
+                timeout=90
+            )
             
             # Process results
             success = verify_result.returncode == 0
@@ -237,21 +244,16 @@ class BaseTaskManager(ABC):
                 task_id=task.task_id
             )
     
-    def run_verification(self, task: BaseTask) -> subprocess.CompletedProcess:
-        """Run the verification script for a task (can be overridden).
+    def get_task_instruction(self, task: BaseTask) -> str:
+        """Template method for getting formatted task instruction.
         
-        Default implementation runs the verification command.
-        Services can override this to add environment variables or custom logic.
+        Combines base instruction with service-specific formatting.
         """
-        return subprocess.run(
-            self._get_verification_command(task),
-            capture_output=True,
-            text=True,
-            timeout=90
-        )
+        base_instruction = task.get_task_instruction()
+        return self._format_task_instruction(base_instruction)
     
     # =========================================================================
-    # Abstract Methods - Minimal Set Required
+    # Abstract methods for service-specific behavior
     # =========================================================================
     
     @abstractmethod
@@ -260,113 +262,90 @@ class BaseTaskManager(ABC):
         pass
     
     @abstractmethod
-    def _get_task_organization(self) -> str:
-        """Return task organization type: 'directory' or 'file'.
+    def _find_task_files(self, category_dir: Path) -> List[Dict[str, Any]]:
+        """Find and return task file information in the category directory.
         
-        - 'directory': Tasks organized as task_X/description.md (Notion)
-        - 'file': Tasks organized as task_X.md (GitHub, Filesystem)
+        Returns:
+            List of dictionaries containing task file paths and metadata
         """
         pass
     
     @abstractmethod
-    def _create_task_instance(self, **kwargs) -> BaseTask:
-        """Create a service-specific task instance.
+    def _create_task_from_files(self, category_name: str, task_files_info: Dict[str, Any]) -> Optional[BaseTask]:
+        """Create a task object from file information.
         
-        This allows services to use custom task classes with additional fields.
+        Args:
+            category_name: Name of the task category
+            task_files_info: Dictionary containing task file paths and metadata
+            
+        Returns:
+            Task object or None if creation failed
+        """
+        pass
+    
+    @abstractmethod
+    def _get_verification_command(self, task: BaseTask) -> List[str]:
+        """Get the command to run for task verification.
+        
+        Args:
+            task: The task to verify
+            
+        Returns:
+            Command list suitable for subprocess.run()
+        """
+        pass
+    
+    @abstractmethod
+    def _format_task_instruction(self, base_instruction: str) -> str:
+        """Format the task instruction with service-specific additions.
+        
+        Args:
+            base_instruction: The base task instruction text
+            
+        Returns:
+            Formatted instruction string
         """
         pass
     
     # =========================================================================
-    # Hook Methods with Smart Defaults
+    # Hook methods with default implementations (can be overridden)
     # =========================================================================
     
     def _is_valid_category_dir(self, category_dir: Path) -> bool:
-        """Check if a directory is a valid category directory."""
+        """Check if a directory is a valid category directory.
+        
+        Default implementation excludes hidden directories and 'utils'.
+        Can be overridden by subclasses for service-specific logic.
+        """
         return (category_dir.is_dir() and 
                 not category_dir.name.startswith(".") and 
                 category_dir.name != "utils")
     
-    def _find_task_files(self, category_dir: Path) -> List[Dict[str, Any]]:
-        """Find task files in a category directory (smart default implementation).
-        
-        Automatically handles both directory-based and file-based organization.
-        """
-        task_files = []
-        organization = self._get_task_organization()
-        
-        if organization == "directory":
-            # Notion-style: task_X/description.md
-            for task_dir in sorted(category_dir.iterdir()):
-                if not task_dir.is_dir() or not task_dir.name.startswith("task_"):
-                    continue
-                
-                task_id = self.extract_task_id(task_dir.name, r'task_(\d+)')
-                if task_id is None:
-                    continue
-                
-                desc_file = task_dir / "description.md"
-                verify_file = task_dir / "verify.py"
-                
-                if desc_file.exists() and verify_file.exists():
-                    task_files.append({
-                        'description': desc_file,
-                        'verification': verify_file,
-                        'task_id': task_id
-                    })
-        
-        elif organization == "file":
-            # GitHub/Filesystem style: task_X.md
-            for task_file in sorted(category_dir.glob("task_*.md")):
-                task_id = self.extract_task_id(task_file.name)
-                if task_id is None:
-                    continue
-                
-                # Look for corresponding verification script
-                verify_file = task_file.parent / f"task_{task_id}_verify.py"
-                if not verify_file.exists():
-                    logger.warning("No verification script found for task: %s", task_file)
-                    continue
-                
-                task_files.append({
-                    'description': task_file,
-                    'verification': verify_file,
-                    'task_id': task_id
-                })
-        
-        return task_files
-    
-    def _create_task_from_files(self, category_name: str, task_files_info: Dict[str, Any]) -> Optional[BaseTask]:
-        """Create a task from file information (default implementation)."""
-        return self._create_task_instance(
-            task_instruction_path=task_files_info['description'],
-            task_verification_path=task_files_info['verification'],
-            service=self.service,
-            category=category_name,
-            task_id=task_files_info['task_id']
-        )
-    
-    def _read_task_instruction(self, task: BaseTask) -> str:
-        """Read and return the task instruction content."""
-        return task.get_task_instruction()
-    
-    def _format_task_instruction(self, instruction_content: str) -> str:
-        """Format the task instruction (default: no formatting)."""
-        return instruction_content
-    
-    def _get_verification_command(self, task: BaseTask) -> List[str]:
-        """Get the command to run task verification (default implementation)."""
-        return [sys.executable, str(task.task_verification_path)]
-    
     def _pre_execution_check(self, task: BaseTask) -> Dict[str, Any]:
-        """Perform pre-execution checks (default: always success)."""
+        """Perform any pre-execution checks for the task.
+        
+        Default implementation returns success. Can be overridden by subclasses.
+        
+        Returns:
+            Dictionary with 'success' boolean and optional 'error' message
+        """
+        _ = task  # Unused parameter, but part of the interface
         return {"success": True}
     
     def _post_execution_hook(self, task: BaseTask, success: bool) -> None:
-        """Perform post-execution actions (default: no action)."""
+        """Perform any post-execution actions.
+        
+        Default implementation does nothing. Can be overridden by subclasses.
+        """
+        _ = task, success  # Unused parameters, but part of the interface
         pass
     
     def _standardize_error_message(self, error_message: str) -> str:
-        """Standardize error messages for consistent reporting."""
+        """Standardize error messages for consistent reporting.
+        
+        Default implementation handles common MCP errors.
+        Can be overridden by subclasses for service-specific error handling.
+        """
         if "MCP" in error_message or "Error invoking MCP" in error_message:
             return f"{self.service.title()} MCP Network Error"
         return error_message
