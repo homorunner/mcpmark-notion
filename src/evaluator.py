@@ -12,6 +12,8 @@ from src.factory import MCPServiceFactory
 from src.model_config import ModelConfig
 from src.results_reporter import EvaluationReport, ResultsReporter, TaskResult
 from src.agent import MCPAgent
+from src.services import get_service_definition
+from src.config.config_schema import ConfigRegistry
 
 PIPELINE_RETRY_ERRORS: List[str] = [
     "State Duplication Error",
@@ -199,35 +201,39 @@ class MCPEvaluator:
         Returns:
             Dictionary containing service-specific configuration
         """
-        service_config = {}
+        # Get service definition and eval config mapping
+        service_def = get_service_definition(self.service)
+        eval_config = service_def.get("eval_config", {})
         
-        if self.service == "notion":
-            # For Notion, we need the evaluation API key
-            service_config["notion_key"] = MCPServiceFactory.create_service_config("notion").config["eval_api_key"]
-        elif self.service == "github":
-            # For GitHub, we need the GitHub token
-            service_config["github_token"] = MCPServiceFactory.create_service_config("github").api_key
-        elif self.service == "filesystem":
-            # For filesystem, get the test directory from the task or state manager
-            test_dir = None
-            
-            # First check if task has test_directory attribute (set by state manager)
-            if task and hasattr(task, 'test_directory'):
-                test_dir = task.test_directory
-            # Fallback to state manager's current test directory
-            elif hasattr(self.state_manager, 'get_test_directory'):
-                test_dir_path = self.state_manager.get_test_directory()
-                if test_dir_path:
-                    test_dir = str(test_dir_path)
-            
-            if test_dir:
-                service_config["test_directory"] = test_dir
-                # Also set environment variable for verification scripts
-                os.environ["FILESYSTEM_TEST_DIR"] = test_dir
-        elif self.service == "postgres":
-            # For PostgreSQL (placeholder)
-            pass
-            
+        # Get actual configuration values from registry
+        config = ConfigRegistry.get_config(self.service).get_all()
+        
+        # Build service config based on eval_config mapping
+        service_config = {}
+        for agent_key, config_key in eval_config.items():
+            if config_key == "__from_state_manager__":
+                # Special handling for filesystem test directory
+                if agent_key == "test_directory":
+                    test_dir = None
+                    
+                    # First check if task has test_directory attribute (set by state manager)
+                    if task and hasattr(task, 'test_directory'):
+                        test_dir = task.test_directory
+                    # Fallback to state manager's current test directory
+                    elif hasattr(self.state_manager, 'get_test_directory'):
+                        test_dir_path = self.state_manager.get_test_directory()
+                        if test_dir_path:
+                            test_dir = str(test_dir_path)
+                    
+                    if test_dir:
+                        service_config[agent_key] = test_dir
+                        # Also set environment variable for verification scripts
+                        os.environ["FILESYSTEM_TEST_DIR"] = test_dir
+            else:
+                # Get value from config registry
+                if config_key in config:
+                    service_config[agent_key] = config[config_key]
+        
         return service_config
 
     def run_evaluation(self, task_filter: str) -> EvaluationReport:

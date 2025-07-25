@@ -32,6 +32,7 @@ from agents.mcp.server import MCPServerStdio, MCPServerStreamableHttp, MCPServer
 from openai import AsyncOpenAI
 
 from src.logger import get_logger
+from src.agent_mcp_builder import build_mcp_server
 
 # Initialize logger
 logger = get_logger(__name__)
@@ -120,77 +121,7 @@ class MCPAgent:
         Returns:
             MCP server instance
         """
-        if self.service == "notion":
-            # Notion MCP server configuration
-            notion_key = service_config.get("notion_key")
-            if not notion_key:
-                raise ValueError("Notion API key (notion_key) is required for Notion MCP server")
-
-            return MCPServerStdio(
-                params={
-                    "command": "npx",
-                    "args": ["-y", "@notionhq/notion-mcp-server"],
-                    "env": {
-                        "OPENAPI_MCP_HEADERS": (
-                            '{"Authorization": "Bearer ' + notion_key + '", '
-                            '"Notion-Version": "2022-06-28"}'
-                        )
-                    },
-                },
-                client_session_timeout_seconds=120,
-                cache_tools_list=True,
-            )
-
-        elif self.service == "github":
-            # GitHub MCP server configuration
-            github_token = service_config.get("github_token")
-            if not github_token:
-                raise ValueError("GitHub token (github_token) is required for GitHub MCP server")
-
-            params = MCPServerStreamableHttpParams(
-                url="https://api.githubcopilot.com/mcp/",
-                headers={
-                    "Authorization": f"Bearer {github_token}",
-                    "User-Agent": "MCPBench/1.0"
-                },
-                timeout_seconds=30
-            )
-
-            return MCPServerStreamableHttp(
-                params=params,
-                cache_tools_list=True,
-                name="GitHub MCP Server",
-                client_session_timeout_seconds=120
-            )
-
-        elif self.service == "filesystem":
-            # Filesystem MCP server configuration
-            # Get test directory from service_config or environment
-            test_dir = service_config.get("test_directory", os.getenv("FILESYSTEM_TEST_DIR", "/tmp"))
-            
-            return MCPServerStdio(
-                params={
-                    "command": "npx",
-                    "args": [
-                        "-y",
-                        "@modelcontextprotocol/server-filesystem",
-                        test_dir  # Pass the allowed directory
-                    ],
-                    "env": {
-                        **os.environ,
-                        "NODE_ENV": "production"
-                    }
-                },
-                name="Filesystem MCP Server",
-                cache_tools_list=True,
-            )
-        
-        elif self.service == "postgres":
-            # PostgreSQL MCP server configuration (placeholder)
-            raise NotImplementedError("PostgreSQL MCP server not yet implemented")
-
-        else:
-            raise ValueError(f"Unsupported service: {self.service}")
+        return build_mcp_server(self.service, service_config)
 
     async def _execute_with_streaming(self, instruction: str, **service_config) -> Dict[str, Any]:
         """
