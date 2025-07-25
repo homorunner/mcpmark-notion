@@ -28,7 +28,7 @@ class GitHubStateManager(BaseStateManager):
         # Name of the evaluation organisation / user where temporary test repositories are created
         eval_org: str = "MCPLeague-Eval",
         # Prefix for evaluation repositories that will be created during tasks
-        eval_repo_prefix: str = "test-",
+        eval_repo_prefix: str = "eval-",
         # Organisation / user that hosts the immutable template (initial-state) repositories
         source_org: str = "arvinxx",
     ):
@@ -48,10 +48,10 @@ class GitHubStateManager(BaseStateManager):
 
         self.github_token = github_token
 
-        # Internal naming kept unchanged to avoid touching the rest of the codebase.
-        self.test_org = eval_org               # alias for backward compatibility
-        self.test_repo_prefix = eval_repo_prefix
-        self.initial_state_org = source_org
+        # Store evaluation context (consistent naming)
+        self.eval_org = eval_org  # evaluation organisation / user
+        self.eval_repo_prefix = eval_repo_prefix
+        self.source_org = source_org
         
         # Set up HTTP session for GitHub API
         self.session = requests.Session()
@@ -71,15 +71,15 @@ class GitHubStateManager(BaseStateManager):
             user_info = response.json()
             logger.info(f"GitHub authenticated as: {user_info['login']}")
             
-            # Check if test organization exists (optional)
-            if self.test_org:
-                org_response = self.session.get(f"https://api.github.com/orgs/{self.test_org}")
+            # Check if evaluation organisation exists (optional)
+            if self.eval_org:
+                org_response = self.session.get(f"https://api.github.com/orgs/{self.eval_org}")
                 if org_response.status_code == 200:
-                    logger.info(f"Using test organization: {self.test_org}")
+                    logger.info(f"Using evaluation organisation: {self.eval_org}")
                 else:
-                    logger.warning(f"Test organization {self.test_org} not accessible, using user account")
+                    logger.warning(f"Evaluation organisation {self.eval_org} not accessible, using user account")
                     # Fall back to user account
-                    self.test_org = user_info['login']
+                    self.eval_org = user_info['login']
             
             logger.info("GitHub state manager initialized successfully")
             
@@ -114,7 +114,7 @@ class GitHubStateManager(BaseStateManager):
             
             # For basic file operations, we might create a test repository
             if self._task_needs_repo(task):
-                repo_name = f"{self.test_repo_prefix}{task.category}-{task.task_id}"
+                repo_name = f"{self.eval_repo_prefix}{task.category}-{task.task_id}"
                 repo_url = self._create_or_get_test_repo(repo_name, task.category)
                 
                 if hasattr(task, 'repository_url'):
@@ -124,7 +124,7 @@ class GitHubStateManager(BaseStateManager):
                 self.created_resources.append({
                     'type': 'repository',
                     'name': repo_name,
-                    'owner': self.test_org
+                    'owner': self.eval_org
                 })
                 
                 logger.info(f"Created/configured test repository: {repo_url}")
@@ -151,7 +151,7 @@ class GitHubStateManager(BaseStateManager):
             for resource in self.created_resources:
                 try:
                     if resource['type'] == 'repository':
-                        # 默认删除测试仓库，而不是归档
+                        # By default, delete test repositories instead of archiving them
                         if kwargs.get('archive_only', False):
                             self._archive_repository(resource['owner'], resource['name'])
                             logger.info(f"Archived repository: {resource['owner']}/{resource['name']}")
@@ -199,7 +199,7 @@ class GitHubStateManager(BaseStateManager):
     def _create_or_get_test_repo(self, repo_name: str, category: str) -> str:
         """Create or get a test repository for the task."""
         # Check if repository already exists
-        repo_url = f"https://api.github.com/repos/{self.test_org}/{repo_name}"
+        repo_url = f"https://api.github.com/repos/{self.eval_org}/{repo_name}"
         response = self.session.get(repo_url)
         
         if response.status_code == 200:
@@ -294,12 +294,12 @@ class GitHubStateManager(BaseStateManager):
     def _using_test_org(self) -> bool:
         """Whether we're operating in a separate evaluation organisation."""
         auth_user = self._get_authenticated_user()
-        return bool(self.test_org and auth_user and self.test_org != auth_user)
+        return bool(self.eval_org and auth_user and self.eval_org != auth_user)
 
     def _repo_create_endpoint(self) -> str:
         """Return correct REST endpoint for creating repositories (org or user)."""
         if self._using_test_org():
-            return f"https://api.github.com/orgs/{self.test_org}/repos"
+            return f"https://api.github.com/orgs/{self.eval_org}/repos"
         return "https://api.github.com/user/repos"
 
     # =========================================================================
@@ -357,7 +357,7 @@ class GitHubStateManager(BaseStateManager):
     # =========================================================================
     
     def track_created_repository(self, repo_name: str, owner: str = None):
-        """追踪任务执行过程中创建的仓库（例如通过MCP工具）"""
+        """Track repositories created during task execution (e.g., via MCP tools)"""
         if not owner:
             owner = self._get_authenticated_user()
         
@@ -365,16 +365,16 @@ class GitHubStateManager(BaseStateManager):
             'type': 'repository',
             'name': repo_name,
             'owner': owner,
-            'created_by': 'mcp_task'  # 标记为MCP任务创建
+            'created_by': 'mcp_task'  # Marked as created by MCP task
         })
         logger.info(f"Tracking repository for cleanup: {owner}/{repo_name}")
 
     def get_test_repositories(self) -> list:
-        """获取所有被追踪的测试仓库列表"""
+        """Return a list of all tracked test repositories"""
         return [r for r in self.created_resources if r['type'] == 'repository']
 
     def force_cleanup_test_repos(self, pattern: str = "mcpbench-test-") -> bool:
-        """强制清理所有匹配模式的测试仓库"""
+        """Force delete all test repositories that match the given name pattern"""
         user = self._get_authenticated_user()
         if not user:
             logger.error("Cannot get authenticated user for cleanup")
@@ -383,7 +383,7 @@ class GitHubStateManager(BaseStateManager):
         success = True
         # List repositories from appropriate account
         if self._using_test_org():
-            repos_url = f"https://api.github.com/orgs/{self.test_org}/repos?per_page=100"
+            repos_url = f"https://api.github.com/orgs/{self.eval_org}/repos?per_page=100"
         else:
             repos_url = "https://api.github.com/user/repos?per_page=100"
         response = self.session.get(repos_url)
@@ -509,12 +509,12 @@ class GitHubStateManager(BaseStateManager):
         """Fork initial state repository to user account and rename."""
         try:
             # 1. Fork initial state repository
-            fork_url = f"https://api.github.com/repos/{self.initial_state_org}/{initial_state_name}/forks"
+            fork_url = f"https://api.github.com/repos/{self.source_org}/{initial_state_name}/forks"
 
             # Fork to organisation if needed
             fork_payload: dict[str, Any]
             if self._using_test_org():
-                fork_payload = {"organization": self.test_org}
+                fork_payload = {"organization": self.eval_org}
             else:
                 fork_payload = {}
 
@@ -622,12 +622,12 @@ class GitHubStateManager(BaseStateManager):
                 
             try:
                 # Check if initial state repository exists
-                check_url = f"https://api.github.com/repos/{self.initial_state_org}/{initial_state_name}"
+                check_url = f"https://api.github.com/repos/{self.source_org}/{initial_state_name}"
                 response = self.session.get(check_url)
                 results[category] = response.status_code == 200
                 
                 if response.status_code != 200:
-                    logger.warning(f"Initial state repository {self.initial_state_org}/{initial_state_name} not accessible: {response.status_code}")
+                    logger.warning(f"Initial state repository {self.source_org}/{initial_state_name} not accessible: {response.status_code}")
                     
             except Exception as e:
                 logger.error(f"Failed to validate initial state {initial_state_name}: {e}")
@@ -643,7 +643,7 @@ class GitHubStateManager(BaseStateManager):
         """Check if initial state repository can be forked (i.e., has Git content)."""
         try:
             # Check initial state repository commits
-            commits_url = f"https://api.github.com/repos/{self.initial_state_org}/{initial_state_name}/commits"
+            commits_url = f"https://api.github.com/repos/{self.source_org}/{initial_state_name}/commits"
             response = self.session.get(commits_url)
             
             if response.status_code == 200:
