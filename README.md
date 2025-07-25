@@ -4,30 +4,13 @@ MCPBench is a comprehensive evaluation suite for testing AI models’ ability to
 It ships with **20 real-world tasks** (e.g., habit tracker, online resume builder) that can be run against **your own MCP server and your own Notion pages**.
 
 
-## 1 · Set-up Your Notion Workspace
+## 1 · Environment Setup
 
-1. **Duplicate the MCPBench Source Pages**
-   Copy the template database and pages into your workspace from the public template:
-   [Duplicate MCPBench Source](https://painted-tennis-ebc.notion.site/MCPBench-Source-Hub-23181626b6d7805fb3a7d59c63033819).
+Before running MCPBench you need to prepare the environment for the MCP service you plan to evaluate. Follow the service-specific guides below:
 
-2. **Set Up Source Hub and Eval Hub for Environment Isolation**
-   - You will need **two separate Notion workspaces (or root pages)**:
-     - **Source Hub**: Stores all the template databases/pages. Managed by `SOURCE_NOTION_API_KEY`.
-     - **Eval Hub**: Only contains the duplicated templates for the current evaluation. Managed by `EVAL_NOTION_API_KEY`.
-   - In Notion, create an **empty page** in your Eval Hub. The page name **must exactly match** the value you set for `EVAL_PARENT_PAGE_TITLE` in your environment variables (e.g., `MCPBench Eval Hub`).
-   - In Notion's **Connections** settings:
-     - Bind the integration corresponding to `EVAL_NOTION_API_KEY` to the Eval Hub parent page you just created.
-     - Bind the integration corresponding to `SOURCE_NOTION_API_KEY` to your Source Hub (where the templates are stored).
-
-3. **Create Notion Integrations & Grant Access**
-   a. Go to [Notion Integrations](https://www.notion.so/profile/integrations) and create two internal integrations (one for Source Hub, one for Eval Hub).
-   b. Copy the generated **Internal Integration Tokens** (these will be your `SOURCE_NOTION_API_KEY` and `EVAL_NOTION_API_KEY`).
-   c. Share the **Source Hub** with the Source integration, and the **Eval Hub parent page** with the Eval integration (*Full Access*).
-   ![Source Page](asset/source_page.png)
-   ![Create Integration](asset/create_integration.png)
-   ![API Access](asset/api_access.png)
-   ![Grant Access Source](asset/grant_access_source.png)
-   ![Grant Access Eval](asset/grant_access_eval.png)
+- **Notion** – [docs/setup/notion-workspace-setup.md](docs/setup/notion-workspace-setup.md)
+- **GitHub** – coming soon...
+- **Filesystem** – coming soon...
 
 ## 2 · Environment Variables
 
@@ -87,18 +70,12 @@ You only need to set the variables for the model providers you plan to use. Curr
 pip install -r requirements.txt
 ```
 
-## 4 · Authenticate with Notion
+## 4 · Authenticate with Your MCP Service
 
-```bash
-# First, install Playwright and the browser binaries
-playwright install
-# Then, run the Notion login helper with your preferred browser
-python -m src.mcp_services.notion.notion_login_helper --browser {firefox|chromium}
+Refer to the corresponding guide for authentication details:
 
-# If login is successful, a cookie file `notion_state.json` will be generated in the project root
-# Verify the login was successful
-python -m tests.test_login
-```
+- Notion: [docs/setup/notion-workspace-setup.md#authenticate-with-notion](docs/setup/notion-workspace-setup.md#authenticate-with-notion)
+- GitHub: handled automatically via `GITHUB_TOKEN`.
 
 The verification script will tell you which browser is working properly. The pipeline defaults to using **chromium**. Our pipeline has been **fully tested on macOS and Linux**.
 
