@@ -252,12 +252,13 @@ SERVICES = {
         "mcp_server": {
             "type": "stdio",
             "command": "npx",
-            "args": ["-y", "@playwright/mcp@latest", "--headless"],
+            "args": ["-y", "@playwright/mcp@latest", "--headless", "--isolated"],
             "timeout": 120,
             "cache_tools": True,
             "requires_config": {
                 "args_append": [
-                    "--browser", "{browser}"
+                    "--browser", "{browser}",
+                    "--viewport-size", "{viewport_width},{viewport_height}"
                 ]
             }
         },

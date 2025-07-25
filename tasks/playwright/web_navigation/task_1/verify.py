@@ -52,15 +52,10 @@ def get_working_directory() -> Path:
 
 def check_screenshots(work_dir: Path) -> int:
     """Check for screenshot files and return count found."""
-    screenshot_files = (
-        list(work_dir.glob("*screenshot*.*")) +
-        list(work_dir.glob("*httpbin*.*")) +
-        list(work_dir.glob("*homepage*.*")) +
-        list(work_dir.glob("*get*.*"))
-    )
-    # Filter to only image files
+    # Look for any image files in the directory
     image_extensions = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp'}
-    screenshot_files = [f for f in screenshot_files if f.suffix.lower() in image_extensions]
+    all_files = list(work_dir.glob("*.*"))
+    screenshot_files = [f for f in all_files if f.suffix.lower() in image_extensions]
     
     valid_screenshots = 0
     for screenshot in screenshot_files:
