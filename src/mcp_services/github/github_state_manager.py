@@ -217,11 +217,8 @@ class GitHubStateManager(BaseStateManager):
             "has_wiki": False,
         }
         
-        # If using organization, create in org; otherwise create in user account
-        if self.test_org and self.test_org != self._get_authenticated_user():
-            create_url = f"https://api.github.com/orgs/{self.test_org}/repos"
-        else:
-            create_url = "https://api.github.com/user/repos"
+        # Select correct endpoint based on whether we are using evaluation org
+        create_url = self._repo_create_endpoint()
         
         response = self.session.post(create_url, json=create_data)
         
@@ -279,12 +276,31 @@ class GitHubStateManager(BaseStateManager):
         else:
             logger.info(f"Successfully deleted repository {owner}/{repo_name}")
 
+    # ---------------------------------------------------------------------
+    # Helper utilities (organisation vs user)
+    # ---------------------------------------------------------------------
+
     def _get_authenticated_user(self) -> str:
-        """Get the username of the authenticated user."""
+        """Return cached authenticated username or fetch once from GitHub."""
+        if hasattr(self, "_auth_user") and self._auth_user:
+            return self._auth_user
+
         response = self.session.get("https://api.github.com/user")
         if response.status_code == 200:
-            return response.json()['login']
+            self._auth_user = response.json()["login"]
+            return self._auth_user
         return None
+
+    def _using_test_org(self) -> bool:
+        """Whether we're operating in a separate evaluation organisation."""
+        auth_user = self._get_authenticated_user()
+        return bool(self.test_org and auth_user and self.test_org != auth_user)
+
+    def _repo_create_endpoint(self) -> str:
+        """Return correct REST endpoint for creating repositories (org or user)."""
+        if self._using_test_org():
+            return f"https://api.github.com/orgs/{self.test_org}/repos"
+        return "https://api.github.com/user/repos"
 
     # =========================================================================
     # GitHub API Utility Methods
@@ -365,8 +381,11 @@ class GitHubStateManager(BaseStateManager):
             return False
         
         success = True
-        # Get user's repositories
-        repos_url = f"https://api.github.com/user/repos?per_page=100"
+        # List repositories from appropriate account
+        if self._using_test_org():
+            repos_url = f"https://api.github.com/orgs/{self.test_org}/repos?per_page=100"
+        else:
+            repos_url = "https://api.github.com/user/repos?per_page=100"
         response = self.session.get(repos_url)
         
         if response.status_code != 200:
@@ -491,7 +510,15 @@ class GitHubStateManager(BaseStateManager):
         try:
             # 1. Fork initial state repository
             fork_url = f"https://api.github.com/repos/{self.initial_state_org}/{initial_state_name}/forks"
-            response = self.session.post(fork_url, json={})
+
+            # Fork to organisation if needed
+            fork_payload: dict[str, Any]
+            if self._using_test_org():
+                fork_payload = {"organization": self.test_org}
+            else:
+                fork_payload = {}
+
+            response = self.session.post(fork_url, json=fork_payload)
             
             if response.status_code not in [200, 202]:
                 raise Exception(f"Failed to fork initial state {initial_state_name}: {response.status_code} {response.text}")
@@ -548,12 +575,8 @@ class GitHubStateManager(BaseStateManager):
                 create_data["has_issues"] = True
                 create_data["has_projects"] = True
             
-            # Choose the correct endpoint: create in org when `self.test_org` differs from the authenticated user,
-            # otherwise create in the user's personal account.
-            if self.test_org and self.test_org != self._get_authenticated_user():
-                create_url = f"https://api.github.com/orgs/{self.test_org}/repos"
-            else:
-                create_url = "https://api.github.com/user/repos"
+            # Choose the correct endpoint (org vs user)
+            create_url = self._repo_create_endpoint()
             response = self.session.post(create_url, json=create_data)
             
             if response.status_code in [200, 201]:
