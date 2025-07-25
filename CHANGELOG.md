@@ -96,9 +96,22 @@ Environment variables remain the same, but you can now:
 ### For Adding New Services
 
 To add a new MCP service:
-1. Add service definition to `src/services.py`:
+1. Add complete service definition to `src/services.py`:
    ```python
    "your_service": {
+       "config_schema": {
+           "api_key": {
+               "env_var": "YOUR_SERVICE_API_KEY",
+               "required": True,
+               "description": "API key for YourService"
+           },
+           "endpoint": {
+               "env_var": "YOUR_SERVICE_ENDPOINT",
+               "default": "https://api.yourservice.com",
+               "required": False,
+               "description": "API endpoint URL"
+           }
+       },
        "components": {
            "task_manager": "src.mcp_services.your_service.your_service_task_manager.YourServiceTaskManager",
            "state_manager": "src.mcp_services.your_service.your_service_state_manager.YourServiceStateManager",
@@ -107,6 +120,7 @@ To add a new MCP service:
        "config_mapping": {
            "state_manager": {
                "api_key": "api_key",  # Maps config key to constructor param
+               "endpoint": "endpoint",
            }
        },
        "mcp_server": {
@@ -126,7 +140,8 @@ To add a new MCP service:
    ```
 
 2. Implement the three service components (task_manager, state_manager, login_helper)
-3. No need to modify agent.py, factory.py, or evaluator.py!
+3. Add environment variables to `.mcp_env`
+4. That's it! No need to modify config_schema.py, agent.py, factory.py, or evaluator.py!
 
 ### For Error Handling
 
