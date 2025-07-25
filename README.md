@@ -9,8 +9,8 @@ It ships with **20 real-world tasks** (e.g., habit tracker, online resume builde
 Before running MCPBench you need to prepare the environment for the MCP service you plan to evaluate. Follow the service-specific guides below:
 
 - **Notion** – [docs/setup/notion-workspace-setup.md](docs/setup/notion-workspace-setup.md)
-- **GitHub** – [docs/mcp/github-environment-management.md](docs/mcp/github-environment-management.md)
-- **Filesystem** – no external preparation required.
+- **GitHub** – coming soon...
+- **Filesystem** – coming soon...
 
 ## 2 · Environment Variables
 
