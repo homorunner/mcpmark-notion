@@ -25,28 +25,33 @@ class GitHubStateManager(BaseStateManager):
     def __init__(
         self,
         github_token: str,
-        base_repo_owner: str = "mcpbench",
-        test_org: str = "mcpbench-eval",
-        test_repo_prefix: str = "test-",
-        initial_state_org: str = "arvinxx",
+        # Name of the evaluation organisation / user where temporary test repositories are created
+        eval_org: str = "MCPLeague-Eval",
+        # Prefix for evaluation repositories that will be created during tasks
+        eval_repo_prefix: str = "test-",
+        # Organisation / user that hosts the immutable template (initial-state) repositories
+        source_org: str = "arvinxx",
     ):
         """
         Initialize GitHub state manager.
         
         Args:
-            github_token: GitHub Personal Access Token
-            base_repo_owner: Owner of base initial state repositories  
-            test_org: Organization for test repositories
-            test_repo_prefix: Prefix for test repository names
-            initial_state_org: Organization containing initial state repositories
+            github_token: GitHub Personal Access Token used for *all* API calls.
+            eval_org: Organisation / user used to host **ephemeral evaluation repositories**.
+            eval_repo_prefix: Prefix for names of the evaluation repositories that will be created.
+            source_org: Organisation / user that contains **read-only template repositories** (initial state).
         """
         super().__init__(service_name="github")
         
+        # List to track resources (repositories, issues, PRs) created during a task for cleanup
+        self.created_resources: list[dict[str, Any]] = []
+
         self.github_token = github_token
-        self.base_repo_owner = base_repo_owner
-        self.test_org = test_org
-        self.test_repo_prefix = test_repo_prefix
-        self.initial_state_org = initial_state_org
+
+        # Internal naming kept unchanged to avoid touching the rest of the codebase.
+        self.test_org = eval_org               # alias for backward compatibility
+        self.test_repo_prefix = eval_repo_prefix
+        self.initial_state_org = source_org
         
         # Set up HTTP session for GitHub API
         self.session = requests.Session()
@@ -543,7 +548,12 @@ class GitHubStateManager(BaseStateManager):
                 create_data["has_issues"] = True
                 create_data["has_projects"] = True
             
-            create_url = "https://api.github.com/user/repos"
+            # Choose the correct endpoint: create in org when `self.test_org` differs from the authenticated user,
+            # otherwise create in the user's personal account.
+            if self.test_org and self.test_org != self._get_authenticated_user():
+                create_url = f"https://api.github.com/orgs/{self.test_org}/repos"
+            else:
+                create_url = "https://api.github.com/user/repos"
             response = self.session.post(create_url, json=create_data)
             
             if response.status_code in [200, 201]:
@@ -552,8 +562,19 @@ class GitHubStateManager(BaseStateManager):
                 owner = repo_data['owner']['login']
                 
                 logger.info(f"Created test repository: {repo_url}")
-                
-                # Note: Resource tracking is handled by the base class template methods
+
+                # Track the repository so that `clean_up` can remove it later
+                self.created_resources.append({
+                    'type': 'repository',
+                    'name': repo_name,
+                    'owner': owner
+                })
+                # Also track via the base class mechanism for consistency
+                self.track_resource('repository', f"{owner}/{repo_name}", {
+                    'created_by': 'create_test_repo_with_content',
+                    'task_category': task_category,
+                    'task_id': task_id
+                })
                 
                 # Add initial content for specific task types
                 if task_category != 'basic_repo_operations':
@@ -625,8 +646,7 @@ class GitHubStateManager(BaseStateManager):
         """Generate test repository name."""
         import time
         timestamp = int(time.time())
-        # Format: mcpbench-test-{timestamp}-{category}-{task_id}
-        return f"mcpbench-test-{timestamp}-{task_category}-{task_id}".replace("_", "-")
+        return f"mcpbench-test-{timestamp}-{task_category}-task-{task_id}".replace("_", "-")
     
     def _rename_repository(self, owner: str, old_name: str, new_name: str) -> bool:
         """Rename repository."""

@@ -95,18 +95,6 @@ SERVICES = {
                 "required": False,
                 "description": "Owner of the base repository"
             },
-            "base_repo_name": {
-                "env_var": "GITHUB_BASE_REPO_NAME",
-                "default": "eval-dev-quality",
-                "required": False,
-                "description": "Name of the base repository"
-            },
-            "fork_owner": {
-                "env_var": "GITHUB_FORK_OWNER",
-                "default": "mcpbench-eval",
-                "required": False,
-                "description": "Owner for forked repositories"
-            }
         },
         "components": {
             "task_manager": "src.mcp_services.github.github_task_manager.GitHubTaskManager",
@@ -116,9 +104,10 @@ SERVICES = {
         "config_mapping": {
             "state_manager": {
                 "github_token": "api_key",
-                "base_repo_owner": "base_repo_owner",
-                "base_repo_name": "base_repo_name",
-                "fork_owner": "fork_owner",
+                # Map evaluation org / account
+                "eval_org": "eval_org",
+                # Map source org that hosts template repositories
+                "source_org": "source_org",
             },
             "login_helper": {
                 "token": "api_key",
