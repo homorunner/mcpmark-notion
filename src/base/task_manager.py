@@ -47,15 +47,20 @@ class BaseTask:
 class BaseTaskManager(ABC):
     """Enhanced base class for service-specific task managers with common discovery logic."""
     
-    def __init__(self, tasks_root: Path, service: str):
+    def __init__(self, tasks_root: Path, service: str = None, task_class: type = None, 
+                 task_organization: str = None):
         """Initialize the base task manager.
         
         Args:
             tasks_root: Root directory containing all tasks
             service: Service name (e.g., 'notion', 'github', 'filesystem')
+            task_class: Custom task class to use (defaults to BaseTask)
+            task_organization: 'file' or 'directory' based task organization
         """
         self.tasks_root = tasks_root
-        self.service = service
+        self.service = service or self.__class__.__name__.lower().replace('taskmanager', '')
+        self.task_class = task_class or BaseTask
+        self.task_organization = task_organization
         self._tasks_cache = None
     
     # =========================================================================
@@ -68,7 +73,7 @@ class BaseTaskManager(ABC):
             return self._tasks_cache
         
         tasks = []
-        service_dir = self.tasks_root / self._get_service_directory_name()
+        service_dir = self.tasks_root / (self.service or self._get_service_directory_name())
         
         if not service_dir.exists():
             logger.warning(f"{self.service.title()} tasks directory does not exist: {service_dir}")
@@ -254,27 +259,28 @@ class BaseTaskManager(ABC):
     # Abstract Methods - Minimal Set Required
     # =========================================================================
     
-    @abstractmethod
     def _get_service_directory_name(self) -> str:
-        """Return the service directory name (e.g., 'notion', 'github')."""
-        pass
+        """Return the service directory name (e.g., 'notion', 'github').
+        
+        Default implementation uses the service parameter if provided.
+        """
+        if self.service:
+            return self.service
+        raise NotImplementedError("Must provide service parameter or implement _get_service_directory_name")
     
-    @abstractmethod
     def _get_task_organization(self) -> str:
         """Return task organization type: 'directory' or 'file'.
         
         - 'directory': Tasks organized as task_X/description.md (Notion)
         - 'file': Tasks organized as task_X.md (GitHub, Filesystem)
-        """
-        pass
-    
-    @abstractmethod
-    def _create_task_instance(self, **kwargs) -> BaseTask:
-        """Create a service-specific task instance.
         
-        This allows services to use custom task classes with additional fields.
+        Default implementation uses the task_organization parameter if provided.
         """
-        pass
+        if self.task_organization:
+            return self.task_organization
+        raise NotImplementedError("Must provide task_organization parameter or implement _get_task_organization")
+    
+    # Note: _create_task_instance is no longer needed - use task_class parameter instead
     
     # =========================================================================
     # Hook Methods with Smart Defaults
@@ -292,7 +298,7 @@ class BaseTaskManager(ABC):
         Automatically handles both directory-based and file-based organization.
         """
         task_files = []
-        organization = self._get_task_organization()
+        organization = self.task_organization or self._get_task_organization()
         
         if organization == "directory":
             # Notion-style: task_X/description.md
@@ -337,7 +343,7 @@ class BaseTaskManager(ABC):
     
     def _create_task_from_files(self, category_name: str, task_files_info: Dict[str, Any]) -> Optional[BaseTask]:
         """Create a task from file information (default implementation)."""
-        return self._create_task_instance(
+        return self.task_class(
             task_instruction_path=task_files_info['description'],
             task_verification_path=task_files_info['verification'],
             service=self.service,
