@@ -13,6 +13,37 @@ so we can reference them directly via the config system.
 # Service definitions
 SERVICES = {
     "notion": {
+        "config_schema": {
+            "source_api_key": {
+                "env_var": "SOURCE_NOTION_API_KEY",
+                "required": True,
+                "description": "Notion API key for source hub with templates"
+            },
+            "eval_api_key": {
+                "env_var": "EVAL_NOTION_API_KEY",
+                "required": True,
+                "description": "Notion API key for evaluation hub"
+            },
+            "eval_parent_page_title": {
+                "env_var": "EVAL_PARENT_PAGE_TITLE",
+                "required": True,
+                "description": "Title of the parent page in evaluation workspace"
+            },
+            "playwright_headless": {
+                "env_var": "PLAYWRIGHT_HEADLESS",
+                "default": True,
+                "required": False,
+                "description": "Run browser in headless mode",
+                "transform": "bool"  # Will be handled by GenericConfigSchema
+            },
+            "playwright_browser": {
+                "env_var": "PLAYWRIGHT_BROWSER",
+                "default": "firefox",
+                "required": False,
+                "description": "Browser to use for Playwright",
+                "validator": "in:chromium,firefox,webkit"  # Simple validator syntax
+            }
+        },
         "components": {
             "task_manager": "src.mcp_services.notion.notion_task_manager.NotionTaskManager",
             "state_manager": "src.mcp_services.notion.notion_state_manager.NotionStateManager",
@@ -52,6 +83,31 @@ SERVICES = {
     },
     
     "github": {
+        "config_schema": {
+            "api_key": {
+                "env_var": "GITHUB_TOKEN",
+                "required": True,
+                "description": "GitHub personal access token"
+            },
+            "base_repo_owner": {
+                "env_var": "GITHUB_BASE_REPO_OWNER",
+                "default": "mcpbench",
+                "required": False,
+                "description": "Owner of the base repository"
+            },
+            "base_repo_name": {
+                "env_var": "GITHUB_BASE_REPO_NAME",
+                "default": "eval-dev-quality",
+                "required": False,
+                "description": "Name of the base repository"
+            },
+            "fork_owner": {
+                "env_var": "GITHUB_FORK_OWNER",
+                "default": "mcpbench-eval",
+                "required": False,
+                "description": "Owner for forked repositories"
+            }
+        },
         "components": {
             "task_manager": "src.mcp_services.github.github_task_manager.GitHubTaskManager",
             "state_manager": "src.mcp_services.github.github_state_manager.GitHubStateManager", 
@@ -86,6 +142,22 @@ SERVICES = {
     },
     
     "filesystem": {
+        "config_schema": {
+            "test_root": {
+                "env_var": "FILESYSTEM_TEST_ROOT",
+                "default": None,
+                "required": False,
+                "description": "Root directory for filesystem tests",
+                "transform": "path"  # Convert to Path object
+            },
+            "cleanup_on_exit": {
+                "env_var": "FILESYSTEM_CLEANUP",
+                "default": True,
+                "required": False,
+                "description": "Clean up test directories after tasks",
+                "transform": "bool"
+            }
+        },
         "components": {
             "task_manager": "src.mcp_services.filesystem.filesystem_task_manager.FilesystemTaskManager",
             "state_manager": "src.mcp_services.filesystem.filesystem_state_manager.FilesystemStateManager",
@@ -115,6 +187,37 @@ SERVICES = {
     },
     
     "postgres": {
+        "config_schema": {
+            "host": {
+                "env_var": "POSTGRES_HOST",
+                "default": "localhost",
+                "required": False,
+                "description": "PostgreSQL server host"
+            },
+            "port": {
+                "env_var": "POSTGRES_PORT",
+                "default": 5432,
+                "required": False,
+                "description": "PostgreSQL server port",
+                "transform": "int",
+                "validator": "port"  # Validates port range 1-65535
+            },
+            "database": {
+                "env_var": "POSTGRES_DATABASE",
+                "required": True,
+                "description": "PostgreSQL database name"
+            },
+            "username": {
+                "env_var": "POSTGRES_USERNAME",
+                "required": True,
+                "description": "PostgreSQL username"
+            },
+            "password": {
+                "env_var": "POSTGRES_PASSWORD",
+                "required": True,
+                "description": "PostgreSQL password"
+            }
+        },
         "components": {
             # Placeholder - not yet implemented
             "task_manager": None,

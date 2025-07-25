@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Generic MCP server builder (`src/agent_mcp_builder.py`)
 - Dynamic service loading from definitions
 - Runtime template substitution for sensitive values
+- GenericConfigSchema that reads config from service definitions
+- Complete config_schema within service definitions (true single source)
 
 ### Changed
 - **BREAKING**: BaseTaskManager now requires only 3 abstract methods instead of 9
@@ -46,6 +48,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ~200 lines of hardcoded service-specific logic in agent.py
 - Complex error classification system (kept only essential retry logic)
 - Scattered service-specific if-elif chains across multiple files
+- All hardcoded ConfigSchema classes (NotionConfigSchema, GitHubConfigSchema, etc.)
+- Need to modify config_schema.py when adding new services
 
 ### Performance
 - Reduced codebase size by ~900 lines

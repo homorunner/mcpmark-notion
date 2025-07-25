@@ -20,6 +20,11 @@ from src.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Lazy import to avoid circular dependencies
+def get_service_definition(service_name: str) -> dict:
+    from src.services import get_service_definition as _get_service_def
+    return _get_service_def(service_name)
+
 
 @dataclass
 class ConfigValue:
@@ -138,154 +143,48 @@ class ConfigSchema(ABC):
         }
 
 
-# Concrete Schema Implementations
 
-class NotionConfigSchema(ConfigSchema):
-    """Configuration schema for Notion service."""
+class GenericConfigSchema(ConfigSchema):
+    """Generic configuration schema that reads from service definitions."""
+    
+    def __init__(self, service_name: str):
+        # Get service definition before calling parent init
+        self.service_definition = get_service_definition(service_name)
+        super().__init__(service_name)
     
     def _define_schema(self) -> None:
-        self._add_config(
-            key="source_api_key",
-            env_var="SOURCE_NOTION_API_KEY",
-            required=True,
-            description="API key for source Notion workspace (contains templates)"
-        )
+        """Define schema from service definition."""
+        config_schema = self.service_definition.get("config_schema", {})
         
-        self._add_config(
-            key="eval_api_key",
-            env_var="EVAL_NOTION_API_KEY",
-            required=True,
-            description="API key for evaluation Notion workspace"
-        )
-        
-        self._add_config(
-            key="eval_parent_page_title",
-            env_var="EVAL_PARENT_PAGE_TITLE",
-            required=True,
-            description="Title of the parent page in evaluation workspace"
-        )
-        
-        self._add_config(
-            key="playwright_browser",
-            env_var="PLAYWRIGHT_BROWSER",
-            default="chromium",
-            required=False,
-            description="Browser to use for Playwright automation",
-            validator=lambda x: x in ["chromium", "firefox", "webkit"]
-        )
-        
-        self._add_config(
-            key="playwright_headless",
-            env_var="PLAYWRIGHT_HEADLESS",
-            default=True,
-            required=False,
-            description="Run browser in headless mode",
-            transform=lambda x: x.lower() in ["true", "1", "yes"]
-        )
-
-
-class GitHubConfigSchema(ConfigSchema):
-    """Configuration schema for GitHub service."""
-    
-    def _define_schema(self) -> None:
-        self._add_config(
-            key="api_key",
-            env_var="GITHUB_TOKEN",
-            required=True,
-            description="GitHub personal access token"
-        )
-        
-        self._add_config(
-            key="base_repo_owner",
-            env_var="GITHUB_BASE_REPO_OWNER",
-            default="mcpbench",
-            required=False,
-            description="Owner of the base repository"
-        )
-        
-        self._add_config(
-            key="base_repo_name",
-            env_var="GITHUB_BASE_REPO_NAME",
-            default="eval-dev-quality",
-            required=False,
-            description="Name of the base repository"
-        )
-        
-        self._add_config(
-            key="fork_owner",
-            env_var="GITHUB_FORK_OWNER",
-            default="mcpbench-eval",
-            required=False,
-            description="Owner for forked repositories"
-        )
-
-
-class FilesystemConfigSchema(ConfigSchema):
-    """Configuration schema for Filesystem service."""
-    
-    def _define_schema(self) -> None:
-        self._add_config(
-            key="test_root",
-            env_var="FILESYSTEM_TEST_ROOT",
-            default=None,
-            required=False,
-            description="Root directory for filesystem tests",
-            transform=lambda x: Path(x) if x else None,
-            validator=lambda x: x is None or x.parent.exists()
-        )
-        
-        self._add_config(
-            key="cleanup_on_exit",
-            env_var="FILESYSTEM_CLEANUP",
-            default=True,
-            required=False,
-            description="Clean up test directories after tasks",
-            transform=lambda x: x.lower() in ["true", "1", "yes"]
-        )
-
-
-class PostgresConfigSchema(ConfigSchema):
-    """Configuration schema for PostgreSQL service."""
-    
-    def _define_schema(self) -> None:
-        self._add_config(
-            key="host",
-            env_var="POSTGRES_HOST",
-            default="localhost",
-            required=False,
-            description="PostgreSQL server host"
-        )
-        
-        self._add_config(
-            key="port",
-            env_var="POSTGRES_PORT",
-            default=5432,
-            required=False,
-            description="PostgreSQL server port",
-            transform=int,
-            validator=lambda x: 1 <= x <= 65535
-        )
-        
-        self._add_config(
-            key="database",
-            env_var="POSTGRES_DATABASE",
-            required=True,
-            description="PostgreSQL database name"
-        )
-        
-        self._add_config(
-            key="username",
-            env_var="POSTGRES_USERNAME",
-            required=True,
-            description="PostgreSQL username"
-        )
-        
-        self._add_config(
-            key="password",
-            env_var="POSTGRES_PASSWORD",
-            required=True,
-            description="PostgreSQL password"
-        )
+        for key, config in config_schema.items():
+            # Handle transform strings
+            transform = None
+            transform_str = config.get("transform")
+            if transform_str == "bool":
+                transform = lambda x: x.lower() in ["true", "1", "yes"]
+            elif transform_str == "int":
+                transform = int
+            elif transform_str == "path":
+                transform = lambda x: Path(x) if x else None
+            
+            # Handle validator strings
+            validator = None
+            validator_str = config.get("validator")
+            if validator_str == "port":
+                validator = lambda x: 1 <= x <= 65535
+            elif validator_str and validator_str.startswith("in:"):
+                valid_values = validator_str[3:].split(",")
+                validator = lambda x, values=valid_values: x in values
+            
+            self._add_config(
+                key=key,
+                env_var=config.get("env_var"),
+                default=config.get("default"),
+                required=config.get("required", True),
+                description=config.get("description", ""),
+                validator=validator,
+                transform=transform
+            )
 
 
 # Configuration Registry
@@ -293,36 +192,22 @@ class PostgresConfigSchema(ConfigSchema):
 class ConfigRegistry:
     """Central registry for all service configurations."""
     
-    _schemas: Dict[str, Type[ConfigSchema]] = {
-        "notion": NotionConfigSchema,
-        "github": GitHubConfigSchema,
-        "filesystem": FilesystemConfigSchema,
-        "postgres": PostgresConfigSchema,
-    }
-    
     _instances: Dict[str, ConfigSchema] = {}
     
     @classmethod
     def get_config(cls, service_name: str) -> ConfigSchema:
         """Get or create configuration for a service."""
         if service_name not in cls._instances:
-            if service_name not in cls._schemas:
-                raise ValueError(f"Unknown service: {service_name}")
-            
-            cls._instances[service_name] = cls._schemas[service_name](service_name)
-        
+            cls._instances[service_name] = GenericConfigSchema(service_name)
         return cls._instances[service_name]
-    
-    @classmethod
-    def register_schema(cls, service_name: str, schema_class: Type[ConfigSchema]) -> None:
-        """Register a new configuration schema."""
-        cls._schemas[service_name] = schema_class
     
     @classmethod
     def validate_all(cls) -> Dict[str, bool]:
         """Validate all registered configurations."""
+        from src.services import get_supported_services
+        
         results = {}
-        for service_name in cls._schemas:
+        for service_name in get_supported_services():
             try:
                 cls.get_config(service_name)
                 results[service_name] = True
@@ -334,18 +219,14 @@ class ConfigRegistry:
     @classmethod
     def export_template(cls, service_name: str, output_path: Path) -> None:
         """Export a configuration template for a service."""
-        if service_name not in cls._schemas:
-            raise ValueError(f"Unknown service: {service_name}")
-        
-        # Create a dummy instance to get schema
-        schema = cls._schemas[service_name](service_name)
+        config = cls.get_config(service_name)
         
         template = {
             "service": service_name,
             "configuration": {}
         }
         
-        for key, config_value in schema._values.items():
+        for key, config_value in config._values.items():
             template["configuration"][key] = {
                 "value": config_value.value if config_value.source == "default" else None,
                 "description": config_value.description,
@@ -357,8 +238,8 @@ class ConfigRegistry:
             yaml.dump(template, f, default_flow_style=False, sort_keys=False)
 
 
-# Backward Compatibility
+# Utility Functions
 
 def get_service_config(service_name: str) -> Dict[str, Any]:
-    """Get service configuration as a dictionary (backward compatible)."""
+    """Get service configuration as a dictionary."""
     return ConfigRegistry.get_config(service_name).get_all()
