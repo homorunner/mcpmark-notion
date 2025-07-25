@@ -190,10 +190,10 @@ SERVICES = {
         "config_schema": {
             "browser": {
                 "env_var": "PLAYWRIGHT_BROWSER",
-                "default": "chrome",
+                "default": "chromium",
                 "required": False,
-                "description": "Browser to use (chrome, firefox, webkit)",
-                "validator": "in:chrome,firefox,webkit"
+                "description": "Browser to use (chromium, firefox, webkit)",
+                "validator": "in:chromium,firefox,webkit"
             },
             "headless": {
                 "env_var": "PLAYWRIGHT_HEADLESS",
@@ -252,7 +252,7 @@ SERVICES = {
         "mcp_server": {
             "type": "stdio",
             "command": "npx",
-            "args": ["-y", "playwright-mcp", "--headless"],
+            "args": ["-y", "@playwright/mcp@latest", "--headless"],
             "timeout": 120,
             "cache_tools": True,
             "requires_config": {
