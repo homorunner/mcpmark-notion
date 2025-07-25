@@ -375,23 +375,20 @@ class MCPAgent:
             if result["success"]:
                 return result
 
-            # Use unified error handling
-            from src.errors import ErrorHandler
+            # Standardize error message
+            from src.errors import standardize_error_message, is_retryable_error, get_retry_delay
             
-            error_handler = ErrorHandler(service_name=self.service)
-            error_info = error_handler.handle(Exception(result["error"] or "Unknown error"))
+            error_msg = standardize_error_message(result["error"] or "Unknown error", service=self.service)
+            result["error"] = error_msg
             
-            if error_info.retryable and attempt < self.max_retries:
-                wait_seconds = error_handler.get_retry_delay(error_info, attempt)
+            if is_retryable_error(result["error"]) and attempt < self.max_retries:
+                wait_seconds = get_retry_delay(attempt)
                 logger.warning(
-                    f"[Retry] Attempt {attempt}/{self.max_retries} failed with {error_info.category.value}. "
-                    f"Waiting {wait_seconds}s before retrying: {error_info.message}"
+                    f"[Retry] Attempt {attempt}/{self.max_retries} failed. "
+                    f"Waiting {wait_seconds}s before retrying: {error_msg}"
                 )
                 await asyncio.sleep(wait_seconds)
                 continue  # Retry
-
-            # Standardize error message
-            result["error"] = error_info.message
 
             # Non-transient error or out of retry attempts - return last result
             return result
