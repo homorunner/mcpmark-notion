@@ -372,38 +372,6 @@ class GitHubStateManager(BaseStateManager):
     def get_test_repositories(self) -> list:
         """Return a list of all tracked test repositories"""
         return [r for r in self.created_resources if r['type'] == 'repository']
-
-    def force_cleanup_test_repos(self, pattern: str = "mcpbench-test-") -> bool:
-        """Force delete all test repositories that match the given name pattern"""
-        user = self._get_authenticated_user()
-        if not user:
-            logger.error("Cannot get authenticated user for cleanup")
-            return False
-        
-        success = True
-        # List repositories from appropriate account
-        if self._using_test_org():
-            repos_url = f"https://api.github.com/orgs/{self.eval_org}/repos?per_page=100"
-        else:
-            repos_url = "https://api.github.com/user/repos?per_page=100"
-        response = self.session.get(repos_url)
-        
-        if response.status_code != 200:
-            logger.error(f"Failed to get user repositories: {response.text}")
-            return False
-        
-        repos = response.json()
-        
-        for repo in repos:
-            if pattern in repo['name']:
-                try:
-                    self._delete_repository(repo['owner']['login'], repo['name'])
-                    logger.info(f"Force deleted test repository: {repo['full_name']}")
-                except Exception as e:
-                    logger.error(f"Failed to force delete {repo['full_name']}: {e}")
-                    success = False
-        
-        return success
     
     # =========================================================================
     # Legacy Task Setup Methods (can be deprecated)
@@ -610,30 +578,6 @@ class GitHubStateManager(BaseStateManager):
         except Exception as e:
             logger.error(f"Failed to create test repository with content: {e}")
             raise
-    
-    def validate_initial_state_repos(self) -> Dict[str, bool]:
-        """Validate that initial state repositories are accessible."""
-        results = {}
-        
-        for category, initial_state_name in self.initial_state_mapping.items():
-            if initial_state_name is None:
-                results[category] = True  # Tasks that don't need initial state
-                continue
-                
-            try:
-                # Check if initial state repository exists
-                check_url = f"https://api.github.com/repos/{self.source_org}/{initial_state_name}"
-                response = self.session.get(check_url)
-                results[category] = response.status_code == 200
-                
-                if response.status_code != 200:
-                    logger.warning(f"Initial state repository {self.source_org}/{initial_state_name} not accessible: {response.status_code}")
-                    
-            except Exception as e:
-                logger.error(f"Failed to validate initial state {initial_state_name}: {e}")
-                results[category] = False
-        
-        return results
     
     # =========================================================================
     # Initial State Validation and Forking Operations
