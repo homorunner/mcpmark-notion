@@ -252,18 +252,13 @@ SERVICES = {
         "mcp_server": {
             "type": "stdio",
             "command": "npx",
-            "args": ["-y", "playwright-mcp"],
+            "args": ["-y", "playwright-mcp", "--headless"],
             "timeout": 120,
             "cache_tools": True,
             "requires_config": {
-                "env": {
-                    "PLAYWRIGHT_BROWSER": "{browser}",
-                    "PLAYWRIGHT_HEADLESS": "{headless}",
-                    "PLAYWRIGHT_NETWORK_ORIGINS": "{network_origins}",
-                    "PLAYWRIGHT_USER_PROFILE": "{user_profile}",
-                    "PLAYWRIGHT_VIEWPORT_WIDTH": "{viewport_width}",
-                    "PLAYWRIGHT_VIEWPORT_HEIGHT": "{viewport_height}"
-                }
+                "args_append": [
+                    "--browser", "{browser}"
+                ]
             }
         },
         "eval_config": {
