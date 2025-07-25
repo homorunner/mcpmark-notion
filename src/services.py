@@ -89,11 +89,19 @@ SERVICES = {
                 "required": True,
                 "description": "GitHub personal access token"
             },
-            "base_repo_owner": {
-                "env_var": "GITHUB_BASE_REPO_OWNER",
-                "default": "mcpbench",
+            # Evaluation organisation / user that hosts ephemeral test repositories
+            "eval_org": {
+                "env_var": "GITHUB_EVAL_ORG",
+                "default": "MCPLeague-Eval",
                 "required": False,
-                "description": "Owner of the base repository"
+                "description": "Evaluation organisation or user for creating temporary test repositories"
+            },
+            # Organisation / user that hosts read-only template repositories (initial state)
+            "source_org": {
+                "env_var": "GITHUB_SOURCE_ORG",
+                "default": "MCPLeague-Source",
+                "required": False,
+                "description": "Organisation or user that stores immutable initial-state template repositories"
             },
         },
         "components": {

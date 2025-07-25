@@ -30,7 +30,7 @@ class GitHubStateManager(BaseStateManager):
         # Prefix for evaluation repositories that will be created during tasks
         eval_repo_prefix: str = "eval-",
         # Organisation / user that hosts the immutable template (initial-state) repositories
-        source_org: str = "arvinxx",
+        source_org: str = "MCPLeague-Source",
     ):
         """
         Initialize GitHub state manager.
@@ -667,9 +667,10 @@ class GitHubStateManager(BaseStateManager):
     
     def _generate_test_repo_name(self, task_id: str, task_category: str) -> str:
         """Generate test repository name."""
-        import time
-        timestamp = int(time.time())
-        return f"mcpbench-test-{timestamp}-{task_category}-task-{task_id}".replace("_", "-")
+        from datetime import datetime
+        # Use an ISO-like timestamp (UTC) for easier readability, e.g. 20250725T153024Z
+        timestamp = datetime.now().strftime("%Y%m%dT%H%M%SZ")
+        return f"mcpleague-test-{timestamp}-{task_category}-task-{task_id}".replace("_", "-")
     
     def _rename_repository(self, owner: str, old_name: str, new_name: str) -> bool:
         """Rename repository."""
