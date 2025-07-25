@@ -186,6 +186,96 @@ SERVICES = {
         }
     },
     
+    "playwright": {
+        "config_schema": {
+            "browser": {
+                "env_var": "PLAYWRIGHT_BROWSER",
+                "default": "chrome",
+                "required": False,
+                "description": "Browser to use (chrome, firefox, webkit)",
+                "validator": "in:chrome,firefox,webkit"
+            },
+            "headless": {
+                "env_var": "PLAYWRIGHT_HEADLESS",
+                "default": True,
+                "required": False,
+                "description": "Run browser in headless mode",
+                "transform": "bool"
+            },
+            "network_origins": {
+                "env_var": "PLAYWRIGHT_NETWORK_ORIGINS",
+                "default": "*",
+                "required": False,
+                "description": "Allowed network origins (comma-separated or *)"
+            },
+            "user_profile": {
+                "env_var": "PLAYWRIGHT_USER_PROFILE",
+                "default": "isolated",
+                "required": False,
+                "description": "User profile type (isolated or persistent)",
+                "validator": "in:isolated,persistent"
+            },
+            "viewport_width": {
+                "env_var": "PLAYWRIGHT_VIEWPORT_WIDTH",
+                "default": 1280,
+                "required": False,
+                "description": "Browser viewport width",
+                "transform": "int"
+            },
+            "viewport_height": {
+                "env_var": "PLAYWRIGHT_VIEWPORT_HEIGHT",
+                "default": 720,
+                "required": False,
+                "description": "Browser viewport height",
+                "transform": "int"
+            }
+        },
+        "components": {
+            "task_manager": "src.mcp_services.playwright.playwright_task_manager.PlaywrightTaskManager",
+            "state_manager": "src.mcp_services.playwright.playwright_state_manager.PlaywrightStateManager",
+            "login_helper": "src.mcp_services.playwright.playwright_login_helper.PlaywrightLoginHelper",
+        },
+        "config_mapping": {
+            "state_manager": {
+                "browser": "browser",
+                "headless": "headless",
+                "network_origins": "network_origins",
+                "user_profile": "user_profile",
+                "viewport_width": "viewport_width",
+                "viewport_height": "viewport_height",
+            },
+            "login_helper": {
+                "browser": "browser",
+                "headless": "headless",
+            }
+        },
+        "mcp_server": {
+            "type": "stdio",
+            "command": "npx",
+            "args": ["-y", "playwright-mcp"],
+            "timeout": 120,
+            "cache_tools": True,
+            "requires_config": {
+                "env": {
+                    "PLAYWRIGHT_BROWSER": "{browser}",
+                    "PLAYWRIGHT_HEADLESS": "{headless}",
+                    "PLAYWRIGHT_NETWORK_ORIGINS": "{network_origins}",
+                    "PLAYWRIGHT_USER_PROFILE": "{user_profile}",
+                    "PLAYWRIGHT_VIEWPORT_WIDTH": "{viewport_width}",
+                    "PLAYWRIGHT_VIEWPORT_HEIGHT": "{viewport_height}"
+                }
+            }
+        },
+        "eval_config": {
+            "browser": "browser",
+            "headless": "headless",
+            "network_origins": "network_origins",
+            "user_profile": "user_profile",
+            "viewport_width": "viewport_width",
+            "viewport_height": "viewport_height"
+        }
+    },
+    
     "postgres": {
         "config_schema": {
             "host": {
