@@ -111,46 +111,8 @@ class FilesystemStateManager(BaseStateManager):
             if hasattr(task, '__dict__'):
                 task.test_directory = str(self.current_task_dir)
             
-            # Create any initial files/directories needed for specific task categories
-            if task.category == "basic_operations":
-                # Create a sample file for read operations
-                sample_file = self.current_task_dir / "sample.txt"
-                sample_file.write_text("This is a sample file for testing.")
-                logger.info(f"Created sample file: {sample_file}")
-            
-            elif task.category == "directory_operations":
-                # Create some nested directories
-                nested_dir = self.current_task_dir / "level1" / "level2"
-                nested_dir.mkdir(parents=True)
-                (nested_dir / "nested_file.txt").write_text("Nested content")
-                logger.info("Created nested directory structure")
-            
-            elif task.category == "file_management":
-                # Create various txt files to be organized
-                # Files with "test" in content
-                test_file1 = self.current_task_dir / "experiment.txt"
-                test_file1.write_text("This is a test experiment file.")
-                
-                test_file2 = self.current_task_dir / "data" / "test_results.txt"
-                test_file2.parent.mkdir(exist_ok=True)
-                test_file2.write_text("Test results from the latest run.")
-                
-                # Files with "sample" in content
-                sample_file1 = self.current_task_dir / "example.txt"
-                sample_file1.write_text("This is a sample document.")
-                
-                sample_file2 = self.current_task_dir / "docs" / "sample_data.txt"
-                sample_file2.parent.mkdir(exist_ok=True)
-                sample_file2.write_text("Sample data for analysis.")
-                
-                # Files with neither test nor sample
-                other_file1 = self.current_task_dir / "readme.txt"
-                other_file1.write_text("Project documentation goes here.")
-                
-                other_file2 = self.current_task_dir / "notes.txt"
-                other_file2.write_text("Important notes about the project.")
-                
-                logger.info("Created various txt files for organization task")
+            # Create category-specific initial state
+            self._setup_category_files(task.category)
             
             return True
             
@@ -208,6 +170,56 @@ class FilesystemStateManager(BaseStateManager):
             logger.error(f"Filesystem cleanup failed: {e}")
             return False
     
+    def _setup_category_files(self, category: str) -> None:
+        """Setup category-specific files and directories."""
+        setup_configs = {
+            "basic_operations": self._setup_basic_operations,
+            "directory_operations": self._setup_directory_operations,  
+            "file_management": self._setup_file_management,
+        }
+        
+        setup_func = setup_configs.get(category)
+        if setup_func:
+            setup_func()
+        else:
+            logger.debug(f"No specific setup for category: {category}")
+    
+    def _setup_basic_operations(self) -> None:
+        """Setup files for basic operations category."""
+        sample_file = self.current_task_dir / "sample.txt"
+        sample_file.write_text("This is a sample file for testing.")
+        logger.info(f"Created sample file: {sample_file}")
+    
+    def _setup_directory_operations(self) -> None:
+        """Setup directories for directory operations category."""
+        nested_dir = self.current_task_dir / "level1" / "level2"
+        nested_dir.mkdir(parents=True)
+        (nested_dir / "nested_file.txt").write_text("Nested content")
+        logger.info("Created nested directory structure")
+    
+    def _setup_file_management(self) -> None:
+        """Setup various files for file management category."""
+        files_to_create = [
+            # Files with "test" in content
+            ("experiment.txt", "This is a test experiment file."),
+            ("data/test_results.txt", "Test results from the latest run."),
+            
+            # Files with "sample" in content  
+            ("example.txt", "This is a sample document."),
+            ("docs/sample_data.txt", "Sample data for analysis."),
+            
+            # Files with neither test nor sample
+            ("readme.txt", "Project documentation goes here."),
+            ("notes.txt", "Important notes about the project."),
+        ]
+        
+        for file_path, content in files_to_create:
+            full_path = self.current_task_dir / file_path
+            full_path.parent.mkdir(parents=True, exist_ok=True)
+            full_path.write_text(content)
+        
+        logger.info("Created various txt files for organization task")
+
     def get_test_directory(self) -> Optional[Path]:
         """
         Get the current test directory path.

@@ -28,37 +28,30 @@ class FilesystemTask(BaseTask):
 
 
 class FilesystemTaskManager(BaseTaskManager):
-    """Simplified filesystem task manager - only 50 lines!"""
+    """Simplified filesystem task manager using enhanced base class."""
     
     def __init__(self, tasks_root: Path = None):
         """Initialize filesystem task manager."""
         if tasks_root is None:
             tasks_root = Path(__file__).resolve().parents[3] / "tasks"
         
-        super().__init__(tasks_root, service="filesystem")
+        super().__init__(tasks_root, service="filesystem", task_class=FilesystemTask, 
+                         task_organization="file")
     
-    # Required abstract methods only
-    
-    def _get_service_directory_name(self) -> str:
-        """Return the service directory name."""
-        return "filesystem"
-    
-    def _get_task_organization(self) -> str:
-        """Filesystem uses file-based organization."""
-        return "file"
-    
-    def _create_task_instance(self, **kwargs) -> FilesystemTask:
-        """Create a filesystem-specific task instance."""
-        return FilesystemTask(**kwargs)
-    
-    # Optional: Override only what's needed
+    # Override only what's needed for filesystem-specific behavior
     
     def run_verification(self, task: BaseTask) -> subprocess.CompletedProcess:
         """Run verification with filesystem-specific environment."""
         env = os.environ.copy()
         
         # Pass test directory to verification script
-        test_dir = os.getenv('FILESYSTEM_TEST_DIR')
+        # Priority: task.test_directory (set by state manager) > environment variable
+        test_dir = None
+        if hasattr(task, 'test_directory') and task.test_directory:
+            test_dir = task.test_directory
+        else:
+            test_dir = os.getenv('FILESYSTEM_TEST_DIR')
+        
         if test_dir:
             env['FILESYSTEM_TEST_DIR'] = test_dir
             logger.debug(f"Setting FILESYSTEM_TEST_DIR to: {test_dir}")
