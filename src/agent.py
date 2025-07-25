@@ -16,7 +16,7 @@ The agent does NOT handle task-specific logic - that's the responsibility of tas
 import asyncio
 import os
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from agents import (
     Agent,
@@ -26,14 +26,13 @@ from agents import (
     OpenAIChatCompletionsModel,
     RunConfig,
     Runner,
-    ItemHelpers,
     set_tracing_export_api_key,
 )
 from agents.mcp.server import MCPServerStdio, MCPServerStreamableHttp, MCPServerStreamableHttpParams
 from openai import AsyncOpenAI
-from openai.types.responses import ResponseTextDeltaEvent
 
 from src.logger import get_logger
+from src.agent_mcp_builder import build_mcp_server
 
 # Initialize logger
 logger = get_logger(__name__)
@@ -122,55 +121,7 @@ class MCPAgent:
         Returns:
             MCP server instance
         """
-        if self.service == "notion":
-            # Notion MCP server configuration
-            notion_key = service_config.get("notion_key")
-            if not notion_key:
-                raise ValueError("Notion API key (notion_key) is required for Notion MCP server")
-
-            return MCPServerStdio(
-                params={
-                    "command": "npx",
-                    "args": ["-y", "@notionhq/notion-mcp-server"],
-                    "env": {
-                        "OPENAPI_MCP_HEADERS": (
-                            '{"Authorization": "Bearer ' + notion_key + '", '
-                            '"Notion-Version": "2022-06-28"}'
-                        )
-                    },
-                },
-                client_session_timeout_seconds=120,
-                cache_tools_list=True,
-            )
-
-        elif self.service == "github":
-            # GitHub MCP server configuration
-            github_token = service_config.get("github_token")
-            if not github_token:
-                raise ValueError("GitHub token (github_token) is required for GitHub MCP server")
-
-            params = MCPServerStreamableHttpParams(
-                url="https://api.githubcopilot.com/mcp/",
-                headers={
-                    "Authorization": f"Bearer {github_token}",
-                    "User-Agent": "MCPBench/1.0"
-                },
-                timeout_seconds=30
-            )
-
-            return MCPServerStreamableHttp(
-                params=params,
-                cache_tools_list=True,
-                name="GitHub MCP Server",
-                client_session_timeout_seconds=120
-            )
-
-        elif self.service == "postgres":
-            # PostgreSQL MCP server configuration (placeholder)
-            raise NotImplementedError("PostgreSQL MCP server not yet implemented")
-
-        else:
-            raise ValueError(f"Unsupported service: {self.service}")
+        return build_mcp_server(self.service, service_config)
 
     async def _execute_with_streaming(self, instruction: str, **service_config) -> Dict[str, Any]:
         """
@@ -203,46 +154,65 @@ class MCPAgent:
                 # Prepare conversation
                 conversation = [{"content": instruction, "role": "user"}]
 
-                # Run agent with streaming
-                result = Runner.run_streamed(
-                    agent,
-                    max_turns=20,
-                    input=conversation,
-                    run_config=RunConfig(model_provider=self.model_provider),
-                )
+                # Try non-streaming first to avoid logprobs issue
+                try:
+                    # Use non-streaming run
+                    result = await Runner.run(
+                        agent,
+                        max_turns=20,
+                        input=conversation,
+                        run_config=RunConfig(model_provider=self.model_provider),
+                    )
+                    
+                    # Process non-streaming result
+                    print("\n[Agent completed task]")
+                    
+                except Exception as non_streaming_error:
+                    logger.warning(f"Non-streaming failed, falling back to streaming: {non_streaming_error}")
+                    
+                    # Fall back to streaming
+                    result = Runner.run_streamed(
+                        agent,
+                        max_turns=20,
+                        input=conversation,
+                        run_config=RunConfig(model_provider=self.model_provider),
+                    )
 
-                # Add small delay to ensure background task starts
-                await asyncio.sleep(0.1)
+                    # Add small delay to ensure background task starts
+                    await asyncio.sleep(0.1)
 
-                # Process streaming events
-                event_count = 0
-                async for event in result.stream_events():
-                    event_count += 1
-                    logger.debug(f"Event {event_count}: {event}")
+                    # Process streaming events
+                    event_count = 0
+                    async for event in result.stream_events():
+                        event_count += 1
+                        logger.debug(f"Event {event_count}: {event}")
 
-                    # Check if event has type attribute
-                    if hasattr(event, "type"):
-                        logger.debug(f"Event type: {event.type}")
+                        # Check if event has type attribute
+                        if hasattr(event, "type"):
+                            logger.debug(f"Event type: {event.type}")
 
-                        if event.type == "raw_response_event":
-                            if hasattr(event, "data") and isinstance(
-                                event.data, ResponseTextDeltaEvent
-                            ):
-                                # Print token deltas as we receive them
-                                delta_text = event.data.delta
-                                print(delta_text, end="", flush=True)
+                            if event.type == "raw_response_event":
+                                # Handle text delta events without strict type checking
+                                # This avoids pydantic validation errors for missing 'logprobs' field
+                                if (hasattr(event, "data") and 
+                                    hasattr(event.data, "type") and 
+                                    event.data.type == "response.output_text.delta" and
+                                    hasattr(event.data, "delta")):
+                                    # Print token deltas as we receive them
+                                    delta_text = event.data.delta
+                                    print(delta_text, end="", flush=True)
 
-                        elif event.type == "run_item_stream_event":
-                            if hasattr(event, "item"):
-                                if hasattr(event.item, "type"):
-                                    if event.item.type == "tool_call_item":
-                                        tool_name = "Unknown"
-                                        if (
-                                            hasattr(event.item, "raw_item")
-                                            and hasattr(event.item.raw_item, "name")
-                                        ):
-                                            tool_name = event.item.raw_item.name
-                                        logger.info(f"\n-- Calling {self.service.title()} Tool: {tool_name}...")
+                            elif event.type == "run_item_stream_event":
+                                if hasattr(event, "item"):
+                                    if hasattr(event.item, "type"):
+                                        if event.item.type == "tool_call_item":
+                                            tool_name = "Unknown"
+                                            if (
+                                                hasattr(event.item, "raw_item")
+                                                and hasattr(event.item.raw_item, "name")
+                                            ):
+                                                tool_name = event.item.raw_item.name
+                                            logger.info(f"\n-- Calling {self.service.title()} Tool: {tool_name}...")
 
                 # Extract token usage from raw responses
                 token_usage = {}
@@ -336,24 +306,20 @@ class MCPAgent:
             if result["success"]:
                 return result
 
-            # Check for transient network error keywords
-            error_msg = result["error"] or ""
-            transient = any(
-                code in error_msg for code in ("ETIMEDOUT", "ECONNREFUSED", "MCP Network Error")
-            )
-
-            if transient and attempt < self.max_retries:
-                wait_seconds = self.retry_backoff * attempt
+            # Standardize error message
+            from src.errors import standardize_error_message, is_retryable_error, get_retry_delay
+            
+            error_msg = standardize_error_message(result["error"] or "Unknown error", service=self.service)
+            result["error"] = error_msg
+            
+            if is_retryable_error(result["error"]) and attempt < self.max_retries:
+                wait_seconds = get_retry_delay(attempt)
                 logger.warning(
-                    f"[Retry] Attempt {attempt}/{self.max_retries} failed with transient error. "
+                    f"[Retry] Attempt {attempt}/{self.max_retries} failed. "
                     f"Waiting {wait_seconds}s before retrying: {error_msg}"
                 )
                 await asyncio.sleep(wait_seconds)
                 continue  # Retry
-
-            # Out of retries on transient error - normalize error message
-            if transient:
-                result["error"] = "MCP Network Error"
 
             # Non-transient error or out of retry attempts - return last result
             return result

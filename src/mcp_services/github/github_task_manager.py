@@ -57,6 +57,14 @@ class GitHubTaskManager(BaseTaskManager):
         """Return the service directory name for GitHub."""
         return "github"
     
+    def _get_task_organization(self) -> str:
+        """GitHub uses directory-based task organization."""
+        return "directory"
+    
+    def _create_task_instance(self, **kwargs) -> GitHubTask:
+        """Create a GitHub task instance."""
+        return GitHubTask(**kwargs)
+    
     def _find_task_files(self, category_dir: Path) -> List[Dict[str, Any]]:
         """Find task files in GitHub category directory.
         

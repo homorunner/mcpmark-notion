@@ -3,321 +3,168 @@
 MCP Service Factory for MCPBench
 =================================
 
-This module provides a factory pattern for creating service-specific managers
-and configurations for different MCP services like Notion, GitHub, and PostgreSQL.
+This module provides a simplified factory pattern for creating service-specific managers
+with centralized configuration management.
+
+Features:
+- Dynamic service loading from definitions
+- Centralized configuration
+- Simplified service registration
 """
 
-import os
-from abc import ABC, abstractmethod
-from pathlib import Path
-from typing import Any, Dict, Optional, Type
-
-from dotenv import load_dotenv
+import importlib
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, Optional, Type
 
 from src.base.login_helper import BaseLoginHelper
 from src.base.state_manager import BaseStateManager
 from src.base.task_manager import BaseTaskManager
-from src.logger import get_logger
-
-# Initialize logger
-logger = get_logger(__name__)
+from src.config.config_schema import ConfigRegistry
+from src.services import get_service_definition, get_supported_services
 
 
-class ServiceConfig:
-    """
-    Configuration container for a specific MCP service.
-    It loads the required API keys and other settings from environment variables.
-    """
+@dataclass
+class ServiceComponents:
+    """All components required for a service."""
+    task_manager_class: Type[BaseTaskManager]
+    state_manager_class: Type[BaseStateManager]
+    login_helper_class: Type[BaseLoginHelper]
+    config_mapping: Dict[str, Dict[str, str]]
 
-    def __init__(
-        self,
-        service_name: str,
-        api_key_var: Optional[str] = None,
-        additional_vars: Optional[Dict[str, str]] = None,
-    ):
+
+def import_class(module_path: str):
+    """Dynamically import a class from module path string."""
+    if not module_path:
+        return None
+    module_name, class_name = module_path.rsplit(".", 1)
+    module = importlib.import_module(module_name)
+    return getattr(module, class_name)
+
+
+def apply_config_mapping(config: dict, mapping: dict) -> dict:
+    """Apply config mapping to transform config keys to constructor params."""
+    if not mapping:
+        return {}
+    
+    result = {}
+    for param_name, config_key in mapping.items():
+        if config_key in config:
+            result[param_name] = config[config_key]
+    return result
+
+
+class ServiceRegistry:
+    """Central registry that loads services from definitions."""
+    
+    # Cache for loaded components
+    _components_cache: Dict[str, ServiceComponents] = {}
+    
+    @classmethod
+    def get_components(cls, service_name: str) -> ServiceComponents:
+        """Get service components from definition."""
+        if service_name in cls._components_cache:
+            return cls._components_cache[service_name]
+        
+        definition = get_service_definition(service_name)
+        
+        # Import classes dynamically
+        components = ServiceComponents(
+            task_manager_class=import_class(definition["components"]["task_manager"]),
+            state_manager_class=import_class(definition["components"]["state_manager"]),
+            login_helper_class=import_class(definition["components"]["login_helper"]),
+            config_mapping=definition.get("config_mapping", {})
+        )
+        
+        cls._components_cache[service_name] = components
+        return components
+
+
+class GenericServiceFactory:
+    """Generic factory that works with any service."""
+    
+    def __init__(self, components: ServiceComponents, service_name: str):
+        self.components = components
         self.service_name = service_name
-        self.api_key_var = api_key_var
-        self.additional_vars = additional_vars or {}
-
-        # Load environment variables from .mcp_env file
-        load_dotenv(dotenv_path=".mcp_env", override=False)
-
-        # Primary API key (optional for services that define multiple keys explicitly)
-        self.api_key: Optional[str] = None
-        if api_key_var is not None:
-            self.api_key = os.getenv(api_key_var)
-            if not self.api_key:
-                raise ValueError(f"Missing required environment variable: {api_key_var}")
-
-        # Load any additional configuration variables (mandatory)
-        self.config: Dict[str, str] = {}
-        for var_name, env_var in self.additional_vars.items():
-            value = os.getenv(env_var)
-            if value is None:
-                raise ValueError(f"Missing required environment variable: {env_var}")
-            self.config[var_name] = value
-
-
-class ServiceFactory(ABC):
-    """Abstract base factory for creating service-specific managers."""
-
-    @abstractmethod
-    def create_task_manager(self, config: ServiceConfig, **kwargs) -> BaseTaskManager:
-        """Create a task manager for this service."""
-        pass
-
-    @abstractmethod
-    def create_state_manager(self, config: ServiceConfig, **kwargs) -> BaseStateManager:
-        """Create a state manager for this service."""
-        pass
-
-    @abstractmethod
-    def create_login_helper(self, config: ServiceConfig, **kwargs) -> BaseLoginHelper:
-        """Create a login helper for this service."""
-        pass
-
-
-class NotionServiceFactory(ServiceFactory):
-    """Factory for creating Notion-specific managers."""
-
-    def create_task_manager(self, config: ServiceConfig, **kwargs) -> BaseTaskManager:
-        from src.mcp_services.notion.notion_task_manager import NotionTaskManager
-
-        return NotionTaskManager(
-            tasks_root=kwargs.get("tasks_root"),
-        )
-
-    def create_state_manager(self, config: ServiceConfig, **kwargs) -> BaseStateManager:
-        from src.mcp_services.notion.notion_state_manager import NotionStateManager
-
-        return NotionStateManager(
-            source_notion_key=config.config["source_api_key"],
-            eval_notion_key=config.config["eval_api_key"],
-            headless=bool(config.config["playwright_headless"]),
-            browser=config.config["playwright_browser"],
-            eval_parent_page_title=config.config["eval_parent_page_title"],
-        )
-
-    def create_login_helper(self, config: ServiceConfig, **kwargs) -> BaseLoginHelper:
-        from src.mcp_services.notion.notion_login_helper import NotionLoginHelper
-
-        return NotionLoginHelper(
-            url=kwargs.get("url"),
-            headless=bool(config.config["playwright_headless"]),
-            browser=config.config["playwright_browser"],
-            state_path=kwargs.get("state_path"),
-        )
-
-
-class GitHubServiceFactory(ServiceFactory):
-    """Factory for creating GitHub-specific managers."""
-
-    def create_task_manager(self, config: ServiceConfig, **kwargs) -> BaseTaskManager:
-        from src.mcp_services.github.github_task_manager import GitHubTaskManager
-
-        return GitHubTaskManager(
-            tasks_root=kwargs.get("tasks_root"),
-        )
-
-    def create_state_manager(self, config: ServiceConfig, **kwargs) -> BaseStateManager:
-        from src.mcp_services.github.github_state_manager import GitHubStateManager
-
-        return GitHubStateManager(
-            github_token=config.api_key,
-            base_repo_owner="mcpbench",  # 使用默认值
-            test_org="mcpbench-eval",    # 使用默认值
-        )
-
-    def create_login_helper(self, config: ServiceConfig, **kwargs) -> BaseLoginHelper:
-        from src.mcp_services.github.github_login_helper import GitHubLoginHelper
-
-        return GitHubLoginHelper(
-            token=config.api_key,
-            state_path=kwargs.get("state_path"),
-        )
-
-
-class PostgreSQLServiceFactory(ServiceFactory):
-    """Factory for creating PostgreSQL-specific managers."""
-
-    def create_task_manager(self, config: ServiceConfig, **kwargs) -> BaseTaskManager:
-        raise NotImplementedError("PostgreSQL task manager not yet implemented.")
-
-    def create_state_manager(self, config: ServiceConfig, **kwargs) -> BaseStateManager:
-        raise NotImplementedError("PostgreSQL state manager not yet implemented.")
-
-    def create_login_helper(self, config: ServiceConfig, **kwargs) -> BaseLoginHelper:
-        raise NotImplementedError("PostgreSQL login helper not yet implemented.")
-
-
-class FilesystemServiceFactory(ServiceFactory):
-    """Factory for creating Filesystem-specific managers."""
-
-    def create_task_manager(self, config: ServiceConfig, **kwargs) -> BaseTaskManager:
-        from src.mcp_services.filesystem.filesystem_task_manager import FilesystemTaskManager
-
-        return FilesystemTaskManager(
-            tasks_root=kwargs.get("tasks_root"),
-            model_name=kwargs.get("model_name"),
-            api_key=kwargs.get("api_key"),
-            base_url=kwargs.get("base_url"),
-            test_directory=config.config.get("test_root"),
-            timeout=kwargs.get("timeout", 600),
-        )
-
-    def create_state_manager(self, config: ServiceConfig, **kwargs) -> BaseStateManager:
-        from src.mcp_services.filesystem.filesystem_state_manager import FilesystemStateManager
-
-        test_root = None
-        if "test_root" in config.config:
-            test_root = Path(config.config["test_root"])
-
-        return FilesystemStateManager(
-            test_root=test_root,
-            cleanup_on_exit=kwargs.get("cleanup_on_exit", True),
-        )
-
-    def create_login_helper(self, config: ServiceConfig, **kwargs) -> BaseLoginHelper:
-        from src.mcp_services.filesystem.filesystem_login_helper import FilesystemLoginHelper
-
-        return FilesystemLoginHelper(
-            state_path=kwargs.get("state_path"),
-        )
+    
+    def create_task_manager(self, **kwargs) -> BaseTaskManager:
+        """Create task manager instance."""
+        return self.components.task_manager_class(**kwargs)
+    
+    def create_state_manager(self, config: dict) -> BaseStateManager:
+        """Create state manager with config mapping."""
+        mapping = self.components.config_mapping.get("state_manager", {})
+        kwargs = apply_config_mapping(config, mapping)
+        return self.components.state_manager_class(**kwargs)
+    
+    def create_login_helper(self, config: dict) -> BaseLoginHelper:
+        """Create login helper with config mapping."""
+        mapping = self.components.config_mapping.get("login_helper", {})
+        kwargs = apply_config_mapping(config, mapping)
+        return self.components.login_helper_class(**kwargs)
 
 
 class MCPServiceFactory:
-    """
-    Main factory for creating MCP service components.
-    This class maps service names to their respective factories and configurations.
-    """
-
-    SERVICE_CONFIGS = {
-        # Notion now uses two distinct keys: SOURCE & EVAL.
-        "notion": {
-            "api_key_var": None,  # handled via additional_vars
-            "additional_vars": {
-                "eval_api_key": "EVAL_NOTION_API_KEY",
-                "source_api_key": "SOURCE_NOTION_API_KEY",
-                "eval_parent_page_title": "EVAL_PARENT_PAGE_TITLE",
-                "playwright_browser": "PLAYWRIGHT_BROWSER",
-                "playwright_headless": "PLAYWRIGHT_HEADLESS",
-            },
-        },
-        "github": {
-            "api_key_var": "GITHUB_TOKEN",
-            "additional_vars": {
-                # These are optional for basic testing
-            },
-        },
-        "postgres": {
-            "api_key_var": "POSTGRES_PASSWORD",
-            "additional_vars": {
-                "host": "POSTGRES_HOST",
-                "port": "POSTGRES_PORT",
-                "database": "POSTGRES_DATABASE",
-                "username": "POSTGRES_USERNAME",
-            },
-        },
-        "filesystem": {
-            "api_key_var": None,  # No authentication needed
-            "additional_vars": {
-                "test_root": "FILESYSTEM_TEST_ROOT",  # Optional: root directory for tests
-            },
-        },
-    }
-
-    SERVICE_FACTORIES = {
-        "notion": NotionServiceFactory(),
-        "github": GitHubServiceFactory(),
-        "filesystem": FilesystemServiceFactory(),
-        # "postgres": PostgreSQLServiceFactory(),
-    }
-
+    """Main factory interface."""
+    
     @classmethod
-    def get_supported_services(cls) -> list:
-        """Returns a list of supported service names."""
-        return list(cls.SERVICE_CONFIGS.keys())
-
-    @classmethod
-    def create_service_config(cls, service_name: str) -> ServiceConfig:
-        """
-        Creates a configuration object for a given service.
-
-        Args:
-            service_name: The name of the service.
-
-        Returns:
-            A ServiceConfig instance.
-
-        Raises:
-            ValueError: If the service is not supported.
-        """
-        if service_name not in cls.SERVICE_CONFIGS:
-            supported = ", ".join(cls.get_supported_services())
-            raise ValueError(
-                f"Unsupported service '{service_name}'. Supported services: {supported}"
-            )
-
-        config_info = cls.SERVICE_CONFIGS[service_name]
-        return ServiceConfig(
-            service_name=service_name,
-            api_key_var=config_info["api_key_var"],
-            additional_vars=config_info["additional_vars"],
-        )
-
-    @classmethod
-    def _get_factory(cls, service_name: str) -> ServiceFactory:
-        """Retrieves the factory for a given service."""
-        if service_name not in cls.SERVICE_FACTORIES:
-            raise ValueError(f"No factory registered for service: {service_name}")
-        return cls.SERVICE_FACTORIES[service_name]
-
+    def create_service_config(cls, service_name: str):
+        """Create service configuration (backward compatible)."""
+        config = ConfigRegistry.get_config(service_name)
+        
+        # Create a backward-compatible ServiceConfig-like object
+        class ServiceConfigCompat:
+            def __init__(self, service_name: str, config_dict: dict):
+                self.service_name = service_name
+                self.config = config_dict
+                self.api_key = config_dict.get("api_key")
+        
+        return ServiceConfigCompat(service_name, config.get_all())
+    
     @classmethod
     def create_task_manager(cls, service_name: str, **kwargs) -> BaseTaskManager:
-        """Creates a task manager for the specified service."""
-        config = cls.create_service_config(service_name)
-        factory = cls._get_factory(service_name)
-        return factory.create_task_manager(config, **kwargs)
-
+        """Create task manager for the specified service."""
+        components = ServiceRegistry.get_components(service_name)
+        return components.task_manager_class(**kwargs)
+    
     @classmethod
     def create_state_manager(cls, service_name: str, **kwargs) -> BaseStateManager:
-        """Creates a state manager for the specified service."""
-        config = cls.create_service_config(service_name)
-        factory = cls._get_factory(service_name)
-        return factory.create_state_manager(config, **kwargs)
-
+        """Create state manager for the specified service."""
+        components = ServiceRegistry.get_components(service_name)
+        config = ConfigRegistry.get_config(service_name).get_all()
+        
+        # Use provided kwargs or apply config mapping
+        if not kwargs:
+            mapping = components.config_mapping.get("state_manager", {})
+            kwargs = apply_config_mapping(config, mapping)
+        
+        return components.state_manager_class(**kwargs)
+    
     @classmethod
     def create_login_helper(cls, service_name: str, **kwargs) -> BaseLoginHelper:
-        """Creates a login helper for the specified service."""
-        config = cls.create_service_config(service_name)
-        factory = cls._get_factory(service_name)
-        return factory.create_login_helper(config, **kwargs)
-
+        """Create login helper for the specified service."""
+        components = ServiceRegistry.get_components(service_name)
+        config = ConfigRegistry.get_config(service_name).get_all()
+        
+        # Use provided kwargs or apply config mapping
+        if not kwargs:
+            mapping = components.config_mapping.get("login_helper", {})
+            kwargs = apply_config_mapping(config, mapping)
+        
+        return components.login_helper_class(**kwargs)
+    
     @classmethod
-    def get_service_api_key(cls, service_name: str) -> str:
-        """Retrieves the API key for a specific service."""
-        config = cls.create_service_config(service_name)
-        return config.api_key
-
-
-def main():
-    """Example usage of the service factory."""
-    logger.info("Supported services: %s", MCPServiceFactory.get_supported_services())
-
-    try:
-        # Create Notion service components
-        notion_config = MCPServiceFactory.create_service_config("notion")
-        logger.info("Notion API key loaded: %s", bool(notion_config.api_key))
-
-        # Example: Create a task manager for Notion
-        task_manager = MCPServiceFactory.create_task_manager(
-            "notion",
-        )
-        logger.info("Created task manager: %s", type(task_manager).__name__)
-
-    except ValueError as e:
-        logger.error("Configuration error: %s", e)
-
-
-if __name__ == "__main__":
-    main()
+    def get_supported_services(cls) -> list:
+        """Get list of supported services."""
+        return get_supported_services()
+    
+    @classmethod
+    def get_config_info(cls, service_name: str) -> dict:
+        """Get detailed configuration information for debugging."""
+        config = ConfigRegistry.get_config(service_name)
+        return config.get_debug_info()
+    
+    @classmethod
+    def export_config_template(cls, service_name: str, output_path: str) -> None:
+        """Export a configuration template for a service."""
+        from pathlib import Path
+        ConfigRegistry.export_template(service_name, Path(output_path))
