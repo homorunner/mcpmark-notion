@@ -89,24 +89,20 @@ SERVICES = {
                 "required": True,
                 "description": "GitHub personal access token"
             },
-            "base_repo_owner": {
-                "env_var": "GITHUB_BASE_REPO_OWNER",
-                "default": "mcpbench",
+            # Evaluation organisation / user that hosts ephemeral test repositories
+            "eval_org": {
+                "env_var": "GITHUB_EVAL_ORG",
+                "default": "MCPLeague-Eval",
                 "required": False,
-                "description": "Owner of the base repository"
+                "description": "Evaluation organisation or user for creating temporary test repositories"
             },
-            "base_repo_name": {
-                "env_var": "GITHUB_BASE_REPO_NAME",
-                "default": "eval-dev-quality",
+            # Organisation / user that hosts read-only template repositories (initial state)
+            "source_org": {
+                "env_var": "GITHUB_SOURCE_ORG",
+                "default": "MCPLeague-Source",
                 "required": False,
-                "description": "Name of the base repository"
+                "description": "Organisation or user that stores immutable initial-state template repositories"
             },
-            "fork_owner": {
-                "env_var": "GITHUB_FORK_OWNER",
-                "default": "mcpbench-eval",
-                "required": False,
-                "description": "Owner for forked repositories"
-            }
         },
         "components": {
             "task_manager": "src.mcp_services.github.github_task_manager.GitHubTaskManager",
@@ -116,9 +112,10 @@ SERVICES = {
         "config_mapping": {
             "state_manager": {
                 "github_token": "api_key",
-                "base_repo_owner": "base_repo_owner",
-                "base_repo_name": "base_repo_name",
-                "fork_owner": "fork_owner",
+                # Map evaluation org / account
+                "eval_org": "eval_org",
+                # Map source org that hosts template repositories
+                "source_org": "source_org",
             },
             "login_helper": {
                 "token": "api_key",
