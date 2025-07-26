@@ -41,18 +41,22 @@ class MCPEvaluator:
         self.base_url = model_config.base_url
         self.api_key = model_config.api_key
 
-        # Initialize agent for LLM and MCP server management
+        # Initialize managers using the factory pattern (simplified)
+        self.task_manager = MCPServiceFactory.create_task_manager(service)
+        self.state_manager = MCPServiceFactory.create_state_manager(service)
+
+        # Obtain static service configuration from state manager (e.g., notion_key)
+        self.service_config = self.state_manager.get_service_config_for_agent()
+
+        # Initialize agent for LLM and MCP server management, injecting service_config once
         self.agent = MCPAgent(
             model_name=self.actual_model_name,
             api_key=self.api_key,
             base_url=self.base_url,
             service=service,
             timeout=timeout,
+            service_config=self.service_config,
         )
-        
-        # Initialize managers using the factory pattern (simplified)
-        self.task_manager = MCPServiceFactory.create_task_manager(service)
-        self.state_manager = MCPServiceFactory.create_state_manager(service)
 
         # Initialize results reporter
         self.results_reporter = ResultsReporter()
@@ -172,11 +176,8 @@ class MCPEvaluator:
         # Get task instruction from task manager
         task_instruction = self.task_manager.get_task_instruction(task)
         
-        # Get service-specific configuration from state manager
-        service_config = self.state_manager.get_service_config_for_agent()
-        
-        # Execute with agent
-        agent_result = self.agent.execute_sync(task_instruction, **service_config)
+        # Execute with agent (service_config already injected)
+        agent_result = self.agent.execute_sync(task_instruction)
         
         # Stage 3: Verify the task result using task manager
         logger.info("\n==================== Stage 3: Verifying Task =======================")

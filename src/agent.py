@@ -28,8 +28,8 @@ from agents import (
     Runner,
     set_tracing_export_api_key,
 )
-from agents.mcp.server import MCPServerStdio, MCPServerStreamableHttp, MCPServerStreamableHttpParams
 from openai import AsyncOpenAI
+from openai.types.responses import ResponseTextDeltaEvent
 
 from src.logger import get_logger
 from src.agent_mcp_builder import build_mcp_server
@@ -57,6 +57,7 @@ class MCPAgent:
         timeout: int = 600,
         max_retries: int = 3,
         retry_backoff: float = 5.0,
+        service_config: dict | None = None,
     ):
         """
         Initialize the MCP agent.
@@ -79,6 +80,8 @@ class MCPAgent:
         self.timeout = timeout
         self.max_retries = max_retries
         self.retry_backoff = retry_backoff
+        # Default service-specific configuration (e.g., notion_key)
+        self._default_service_config: dict[str, Any] = service_config or {}
 
         # Initialize model provider
         self.model_provider = self._create_model_provider()
@@ -145,74 +148,42 @@ class MCPAgent:
                 # Configure model settings
                 ModelSettings.tool_choice = "required"
 
-                # Set service-specific environment variables
-                if self.service == "notion" and service_config.get("notion_key"):
-                    os.environ["NOTION_API_KEY"] = service_config["notion_key"]
-                elif self.service == "github" and service_config.get("github_token"):
-                    os.environ["GITHUB_TOKEN"] = service_config["github_token"]
+                # No mutation of global environment variables here – build_mcp_server handles secrets injection.
 
                 # Prepare conversation
                 conversation = [{"content": instruction, "role": "user"}]
 
-                # Try non-streaming first to avoid logprobs issue
-                try:
-                    # Use non-streaming run
-                    result = await Runner.run(
-                        agent,
-                        max_turns=20,
-                        input=conversation,
-                        run_config=RunConfig(model_provider=self.model_provider),
-                    )
-                    
-                    # Process non-streaming result
-                    print("\n[Agent completed task]")
-                    
-                except Exception as non_streaming_error:
-                    logger.warning(f"Non-streaming failed, falling back to streaming: {non_streaming_error}")
-                    
-                    # Fall back to streaming
-                    result = Runner.run_streamed(
-                        agent,
-                        max_turns=20,
-                        input=conversation,
-                        run_config=RunConfig(model_provider=self.model_provider),
-                    )
+                # Run agent with streaming
+                result = Runner.run_streamed(
+                    agent,
+                    max_turns=20,
+                    input=conversation,
+                    run_config=RunConfig(model_provider=self.model_provider),
+                )
 
-                    # Add small delay to ensure background task starts
-                    await asyncio.sleep(0.1)
+                # Add small delay to ensure background task starts
+                await asyncio.sleep(0.1)
 
-                    # Process streaming events
-                    event_count = 0
-                    async for event in result.stream_events():
-                        event_count += 1
-                        logger.debug(f"Event {event_count}: {event}")
+                # Process streaming events
+                event_count = 0
+                async for event in result.stream_events():
+                    event_count += 1
+                    logger.debug(f"Event {event_count}: {event}")
 
-                        # Check if event has type attribute
-                        if hasattr(event, "type"):
-                            logger.debug(f"Event type: {event.type}")
+                    if hasattr(event, "type"):
+                        logger.debug(f"Event type: {event.type}")
 
-                            if event.type == "raw_response_event":
-                                # Handle text delta events without strict type checking
-                                # This avoids pydantic validation errors for missing 'logprobs' field
-                                if (hasattr(event, "data") and 
-                                    hasattr(event.data, "type") and 
-                                    event.data.type == "response.output_text.delta" and
-                                    hasattr(event.data, "delta")):
-                                    # Print token deltas as we receive them
-                                    delta_text = event.data.delta
-                                    print(delta_text, end="", flush=True)
+                        if event.type == "raw_response_event":
+                            if hasattr(event, "data") and isinstance(
+                                event.data, ResponseTextDeltaEvent
+                            ):
+                                delta_text = event.data.delta
+                                print(delta_text, end="", flush=True)
 
-                            elif event.type == "run_item_stream_event":
-                                if hasattr(event, "item"):
-                                    if hasattr(event.item, "type"):
-                                        if event.item.type == "tool_call_item":
-                                            tool_name = "Unknown"
-                                            if (
-                                                hasattr(event.item, "raw_item")
-                                                and hasattr(event.item.raw_item, "name")
-                                            ):
-                                                tool_name = event.item.raw_item.name
-                                            logger.info(f"\n-- Calling {self.service.title()} Tool: {tool_name}...")
+                        elif event.type == "run_item_stream_event":
+                            if hasattr(event, "item") and getattr(event.item, "type", "") == "tool_call_item":
+                                tool_name = getattr(getattr(event.item, "raw_item", None), "name", "Unknown")
+                                logger.info(f"\n-- Calling {self.service.title()} Tool: {tool_name}...")
 
                 # Extract token usage from raw responses
                 token_usage = {}
@@ -297,8 +268,11 @@ class MCPAgent:
             - error: error message if failed
         """
         for attempt in range(1, self.max_retries + 1):
+            # Merge default config with any overrides supplied at call time
+            merged_config = {**self._default_service_config, **service_config}
+
             result = await asyncio.wait_for(
-                self._execute_with_streaming(instruction, **service_config),
+                self._execute_with_streaming(instruction, **merged_config),
                 timeout=self.timeout
             )
 
