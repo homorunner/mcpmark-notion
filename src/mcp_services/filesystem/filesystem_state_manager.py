@@ -111,6 +111,9 @@ class FilesystemStateManager(BaseStateManager):
             if hasattr(task, '__dict__'):
                 task.test_directory = str(self.current_task_dir)
             
+            # Set environment variable for verification scripts and MCP server
+            os.environ["FILESYSTEM_TEST_DIR"] = str(self.current_task_dir)
+            
             # Create category-specific initial state
             self._setup_category_files(task.category)
             
@@ -228,6 +231,21 @@ class FilesystemStateManager(BaseStateManager):
             Path to the current test directory, or None if not set up
         """
         return self.current_task_dir
+    
+    def get_service_config_for_agent(self) -> dict:
+        """
+        Get service-specific configuration for agent execution.
+        
+        Returns:
+            Dictionary containing configuration needed by the agent/MCP server
+        """
+        service_config = {}
+        
+        # Add test directory if available
+        if self.current_task_dir:
+            service_config["test_directory"] = str(self.current_task_dir)
+        
+        return service_config
     
     def track_resource(self, resource_path: Path):
         """

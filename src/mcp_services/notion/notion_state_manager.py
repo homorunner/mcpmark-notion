@@ -476,3 +476,21 @@ class NotionStateManager(BaseStateManager):
         raise RuntimeError(
             f"Initial state duplication failed for task '{task_name}' after {max_retries + 1} attempts: {last_exc}"
         )
+    
+    def get_service_config_for_agent(self) -> dict:
+        """
+        Get service-specific configuration for agent execution.
+        
+        Returns:
+            Dictionary containing configuration needed by the agent/MCP server
+        """
+        from src.config.config_schema import ConfigRegistry
+        
+        # Get the eval_api_key from config registry
+        config = ConfigRegistry.get_config("notion").get_all()
+        service_config = {}
+        
+        if "eval_api_key" in config:
+            service_config["notion_key"] = config["eval_api_key"]
+        
+        return service_config

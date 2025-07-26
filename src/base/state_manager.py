@@ -111,6 +111,18 @@ class BaseStateManager(ABC):
         self.tracked_resources.append(resource)
         logger.debug(f"Tracked {resource_type} resource: {identifier}")
     
+    def get_service_config_for_agent(self) -> dict:
+        """
+        Get service-specific configuration for agent execution.
+        
+        This method should be overridden by service implementations that need
+        to provide additional configuration to the agent.
+        
+        Returns:
+            Dictionary containing configuration needed by the agent/MCP server
+        """
+        return {}
+    
     def _cleanup_tracked_resources(self) -> bool:
         """Clean up all tracked resources."""
         cleanup_success = True
