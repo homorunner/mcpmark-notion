@@ -716,4 +716,19 @@ class GitHubStateManager(BaseStateManager):
         if response.status_code in [200, 201]:
             logger.debug(f"Created sample issue: {title}")
         else:
-            logger.warning(f"Failed to create sample issue: {response.status_code}") 
+            logger.warning(f"Failed to create sample issue: {response.status_code}")
+    
+    def get_service_config_for_agent(self) -> dict:
+        """
+        Get service-specific configuration for agent execution.
+        
+        Returns:
+            Dictionary containing configuration needed by the agent/MCP server
+        """
+        service_config = {}
+        
+        # Add GitHub token if available
+        if self.github_token:
+            service_config["github_token"] = self.github_token
+        
+        return service_config 
