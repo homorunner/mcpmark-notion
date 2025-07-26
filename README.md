@@ -25,6 +25,8 @@ OPENAI_TRACE_API_KEY="sk-proj-xxx-xxx-xx"
 SOURCE_NOTION_API_KEY="your-source-notion-api-key"   # For Source Hub (templates)
 EVAL_NOTION_API_KEY="your-eval-notion-api-key"       # For Eval Hub (active evaluation)
 EVAL_PARENT_PAGE_TITLE="MCPBench Eval Hub"           # Must match the name of the empty page you created in Eval Hub
+PLAYWRIGHT_BROWSER="chromium" # default to chromium, you can also choose firefox
+PLAYWRIGHT_HEADLESS="True"
 
 ## GitHub
 GITHUB_TOKEN="your-github-token-here"

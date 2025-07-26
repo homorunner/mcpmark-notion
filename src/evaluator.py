@@ -172,11 +172,17 @@ class MCPEvaluator:
 
         # Stage 2: Execute the task using the agent
         logger.info("\n==================== Stage 2: Executing Task =======================")
-        
+
+        # Refresh agent's service configuration in case state_manager populated dynamic values
+        updated_cfg = self.state_manager.get_service_config_for_agent() or {}
+        if updated_cfg:
+            # Merge with existing configuration (updated values override)
+            self.agent.service_config.update(updated_cfg)
+
         # Get task instruction from task manager
         task_instruction = self.task_manager.get_task_instruction(task)
-        
-        # Execute with agent (service_config already injected)
+
+        # Execute with agent
         agent_result = self.agent.execute_sync(task_instruction)
         
         # Stage 3: Verify the task result using task manager
