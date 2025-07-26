@@ -17,7 +17,7 @@ The agent does NOT handle task-specific logic - that's the responsibility of tas
 import asyncio
 import os
 import time
-from typing import Any, Dict
+from typing import Any, Dict, Callable
 
 # Third-party dependencies
 from agents import (
@@ -66,6 +66,7 @@ class MCPAgent:
         max_retries: int = 3,
         retry_backoff: float = 5.0,
         service_config: dict | None = None,
+        service_config_provider: "Callable[[], dict] | None" = None,
     ):
         """
         Initialize the MCP agent.
@@ -90,6 +91,8 @@ class MCPAgent:
         self.retry_backoff = retry_backoff
         # Persisted service-specific configuration (e.g., notion_key, browser, test_directory)
         self.service_config: dict[str, Any] = service_config or {}
+        # Store optional provider for dynamic config refresh
+        self._service_config_provider = service_config_provider
 
         # Initialize model provider
         self.model_provider = self._create_model_provider()
@@ -121,6 +124,17 @@ class MCPAgent:
                 )
 
         return CustomModelProvider()
+
+    def _refresh_service_config(self) -> None:
+        """Refresh self.service_config from the provider, if one was supplied."""
+        if self._service_config_provider is None:
+            return
+        try:
+            latest_cfg = self._service_config_provider() or {}
+            # New values override existing ones
+            self.service_config.update(latest_cfg)
+        except Exception as exc:
+            logger.warning("Failed to refresh service config via provider: %s", exc)
 
     async def _create_mcp_server(self) -> Any:
         """Create and return an MCP server instance for the current service using self.service_config."""
@@ -226,6 +240,9 @@ class MCPAgent:
         start_time = time.time()
 
         try:
+            # Refresh service configuration before each execution
+            self._refresh_service_config()
+
             # Create MCP server
             async with await self._create_mcp_server() as server:
                 # Create agent

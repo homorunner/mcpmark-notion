@@ -48,7 +48,10 @@ class MCPEvaluator:
         # Obtain static service configuration from state manager (e.g., notion_key)
         self.service_config = self.state_manager.get_service_config_for_agent()
 
-        # Initialize agent for LLM and MCP server management, injecting service_config once
+        # Initialize agent for LLM and MCP server management. The agent will
+        # automatically refresh its service configuration from the state
+        # manager before each execution, so per-task manual updates are no
+        # longer needed.
         self.agent = MCPAgent(
             model_name=self.actual_model_name,
             api_key=self.api_key,
@@ -56,6 +59,7 @@ class MCPEvaluator:
             service=service,
             timeout=timeout,
             service_config=self.service_config,
+            service_config_provider=self.state_manager.get_service_config_for_agent,
         )
 
         # Initialize results reporter
@@ -173,11 +177,8 @@ class MCPEvaluator:
         # Stage 2: Execute the task using the agent
         logger.info("\n==================== Stage 2: Executing Task =======================")
 
-        # Refresh agent's service configuration in case state_manager populated dynamic values
-        updated_cfg = self.state_manager.get_service_config_for_agent() or {}
-        if updated_cfg:
-            # Merge with existing configuration (updated values override)
-            self.agent.service_config.update(updated_cfg)
+        # NOTE: The agent now refreshes its service configuration internally, so
+        # we no longer need to perform that step here.
 
         # Get task instruction from task manager
         task_instruction = self.task_manager.get_task_instruction(task)

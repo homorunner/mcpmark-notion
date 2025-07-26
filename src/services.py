@@ -8,6 +8,10 @@ Adding a new service only requires modifying this file.
 
 Note: Environment variables are already loaded from .mcp_env when the app starts,
 so we can reference them directly via the config system.
+
+MCP server creation is now handled entirely within src.agent.MCPAgent; therefore,
+the legacy "mcp_server" and "eval_config" entries in each service definition are
+deprecated and set to None for backward-compatibility.
 """
 
 # Service definitions
@@ -63,23 +67,10 @@ SERVICES = {
                 "browser": "playwright_browser",
             }
         },
-        "mcp_server": {
-            "type": "stdio",
-            "command": "npx",
-            "args": ["-y", "@notionhq/notion-mcp-server"],
-            "timeout": 120,
-            "cache_tools": True,
-            # Special fields that need config values
-            "requires_config": {
-                "env": {
-                    "OPENAPI_MCP_HEADERS": '{"Authorization": "Bearer {notion_key}", "Notion-Version": "2022-06-28"}'
-                }
-            }
-        },
-        "eval_config": {
-            # For evaluation, use eval_api_key as notion_key
-            "notion_key": "eval_api_key"
-        }
+        # MCP server is now instantiated dynamically in MCPAgent; kept for backward
+        # compatibility but set to None to indicate deprecation.
+        "mcp_server": None,
+        "eval_config": None
     },
     
     "github": {
@@ -121,21 +112,8 @@ SERVICES = {
                 "token": "api_key",
             }
         },
-        "mcp_server": {
-            "type": "http",
-            "url": "https://api.githubcopilot.com/mcp/",
-            "timeout": 30,
-            "cache_tools": True,
-            "requires_config": {
-                "headers": {
-                    "Authorization": "Bearer {github_token}",
-                    "User-Agent": "MCPBench/1.0"
-                }
-            }
-        },
-        "eval_config": {
-            "github_token": "api_key"
-        }
+        "mcp_server": None,
+        "eval_config": None
     },
     
     "filesystem": {
@@ -166,21 +144,8 @@ SERVICES = {
                 "cleanup_on_exit": "cleanup_on_exit",
             }
         },
-        "mcp_server": {
-            "type": "stdio",
-            "command": "npx",
-            "args": ["-y", "@modelcontextprotocol/server-filesystem"],
-            "timeout": 120,
-            "cache_tools": True,
-            # Filesystem needs test directory appended to args at runtime
-            "requires_config": {
-                "args_append": ["{test_directory}"]
-            }
-        },
-        "eval_config": {
-            # Special handling - get test_directory from state manager
-            "test_directory": "__from_state_manager__"
-        }
+        "mcp_server": None,
+        "eval_config": None
     },
     
     "playwright": {
@@ -246,27 +211,8 @@ SERVICES = {
                 "headless": "headless",
             }
         },
-        "mcp_server": {
-            "type": "stdio",
-            "command": "npx",
-            "args": ["-y", "@playwright/mcp@latest", "--headless", "--isolated"],
-            "timeout": 120,
-            "cache_tools": True,
-            "requires_config": {
-                "args_append": [
-                    "--browser", "{browser}",
-                    "--viewport-size", "{viewport_width},{viewport_height}"
-                ]
-            }
-        },
-        "eval_config": {
-            "browser": "browser",
-            "headless": "headless",
-            "network_origins": "network_origins",
-            "user_profile": "user_profile",
-            "viewport_width": "viewport_width",
-            "viewport_height": "viewport_height"
-        }
+        "mcp_server": None,
+        "eval_config": None
     },
     
     "postgres": {
@@ -309,7 +255,7 @@ SERVICES = {
         },
         "config_mapping": {},
         "mcp_server": None,
-        "eval_config": {}
+        "eval_config": None
     }
 }
 

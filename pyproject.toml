@@ -10,7 +10,7 @@ dependencies = [
   "matplotlib>=3.7.0",
   "numpy>=1.23.0",
   "openai-agents>=0.2.3,<0.3",
-  "openai>=1.97.1,<2",
+  "openai==1.96.1",
   "python-dotenv>=1.1.1,<2",
   "ruff>=0.12.4,<0.13"
 ]
@@ -35,3 +35,6 @@ fmt = "ruff"
 [tool.ruff.format]
 indent-style = "space"
 line-ending = "auto"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src", "tasks"]
