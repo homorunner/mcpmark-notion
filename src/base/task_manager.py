@@ -190,7 +190,12 @@ class BaseTaskManager(ABC):
                 
                 # Standardize MCP network errors
                 error_message = self._standardize_error_message(error_message)
-                    
+
+                # Log the agent failure so users can distinguish it from verification errors
+                logger.error(f"✗ Agent execution failed for task: {task.name}")
+                logger.error(f"⚠️ Error: {error_message}")
+                logger.warning(f"- Skipping verification for task: {task.name} due to agent failure")
+                
                 return TaskResult(
                     task_name=task.name,
                     success=False,
