@@ -69,7 +69,7 @@ You only need to set the variables for the model providers you plan to use. Curr
 ## 3 · Installation
 
 ```bash
-pip install -r requirements.txt
+pip install -e .
 ```
 
 ## 4 · Authenticate with Your MCP Service
