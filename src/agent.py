@@ -13,11 +13,13 @@ management. The agent is responsible for:
 The agent does NOT handle task-specific logic - that's the responsibility of task managers.
 """
 
+# Python stdlib
 import asyncio
 import os
 import time
-from typing import Any, Dict
+from typing import Any, Dict, Callable
 
+# Third-party dependencies
 from agents import (
     Agent,
     Model,
@@ -28,11 +30,17 @@ from agents import (
     Runner,
     set_tracing_export_api_key,
 )
-from agents.mcp.server import MCPServerStdio, MCPServerStreamableHttp, MCPServerStreamableHttpParams
 from openai import AsyncOpenAI
+from openai.types.responses import ResponseTextDeltaEvent
+
+# MCP server classes (stdio & HTTP) from agents SDK
+from agents.mcp.server import (
+    MCPServerStdio,
+    MCPServerStreamableHttp,
+    MCPServerStreamableHttpParams,
+)
 
 from src.logger import get_logger
-from src.agent_mcp_builder import build_mcp_server
 
 # Initialize logger
 logger = get_logger(__name__)
@@ -57,6 +65,8 @@ class MCPAgent:
         timeout: int = 600,
         max_retries: int = 3,
         retry_backoff: float = 5.0,
+        service_config: dict | None = None,
+        service_config_provider: "Callable[[], dict] | None" = None,
     ):
         """
         Initialize the MCP agent.
@@ -79,6 +89,10 @@ class MCPAgent:
         self.timeout = timeout
         self.max_retries = max_retries
         self.retry_backoff = retry_backoff
+        # Persisted service-specific configuration (e.g., notion_key, browser, test_directory)
+        self.service_config: dict[str, Any] = service_config or {}
+        # Store optional provider for dynamic config refresh
+        self._service_config_provider = service_config_provider
 
         # Initialize model provider
         self.model_provider = self._create_model_provider()
@@ -111,25 +125,114 @@ class MCPAgent:
 
         return CustomModelProvider()
 
-    async def _create_mcp_server(self, **service_config):
-        """
-        Create service-specific MCP server connection.
-        
-        Args:
-            **service_config: Service-specific configuration parameters
-            
-        Returns:
-            MCP server instance
-        """
-        return build_mcp_server(self.service, service_config)
+    def _refresh_service_config(self) -> None:
+        """Refresh self.service_config from the provider, if one was supplied."""
+        if self._service_config_provider is None:
+            return
+        try:
+            latest_cfg = self._service_config_provider() or {}
+            # New values override existing ones
+            self.service_config.update(latest_cfg)
+        except Exception as exc:
+            logger.warning("Failed to refresh service config via provider: %s", exc)
 
-    async def _execute_with_streaming(self, instruction: str, **service_config) -> Dict[str, Any]:
+    async def _create_mcp_server(self) -> Any:
+        """Create and return an MCP server instance for the current service using self.service_config."""
+
+        cfg = self.service_config  # shorthand
+
+        if self.service == "notion":
+            notion_key = cfg.get("notion_key")
+            if not notion_key:
+                raise ValueError("Notion API key (notion_key) is required for Notion MCP server")
+
+            return MCPServerStdio(
+                params={
+                    "command": "npx",
+                    "args": ["-y", "@notionhq/notion-mcp-server"],
+                    "env": {
+                        "OPENAPI_MCP_HEADERS": (
+                            '{"Authorization": "Bearer ' + notion_key + '", '
+                            '"Notion-Version": "2022-06-28"}'
+                        )
+                    },
+                },
+                client_session_timeout_seconds=120,
+                cache_tools_list=True,
+            )
+
+        elif self.service == "github":
+            github_token = cfg.get("github_token")
+            if not github_token:
+                raise ValueError("GitHub token (github_token) is required for GitHub MCP server")
+
+            params = MCPServerStreamableHttpParams(
+                url="https://api.githubcopilot.com/mcp/",
+                headers={
+                    "Authorization": f"Bearer {github_token}",
+                    "User-Agent": "MCPBench/1.0",
+                },
+                timeout_seconds=30,
+            )
+
+            return MCPServerStreamableHttp(
+                params=params,
+                cache_tools_list=True,
+                name="GitHub MCP Server",
+                client_session_timeout_seconds=120,
+            )
+
+        elif self.service == "filesystem":
+            # Filesystem MCP server
+            test_directory = cfg.get("test_directory")
+            if not test_directory:
+                raise ValueError("filesystem service requires 'test_directory' in service_config")
+
+            return MCPServerStdio(
+                params={
+                    "command": "npx",
+                    "args": ["-y", "@modelcontextprotocol/server-filesystem", str(test_directory)],
+                },
+                client_session_timeout_seconds=120,
+                cache_tools_list=True,
+            )
+
+        elif self.service == "playwright":
+            # Playwright MCP server
+            browser = cfg.get("browser", "chromium")
+            headless = cfg.get("headless", True)
+            viewport_width = cfg.get("viewport_width", 1280)
+            viewport_height = cfg.get("viewport_height", 720)
+
+            args = ["-y", "@playwright/mcp@latest"]
+            if headless:
+                args.append("--headless")
+            args.append("--isolated")
+            args.extend(["--browser", browser, "--viewport-size", f"{viewport_width},{viewport_height}"])
+
+            return MCPServerStdio(
+                params={
+                    "command": "npx",
+                    "args": args,
+                },
+                client_session_timeout_seconds=120,
+                cache_tools_list=True,
+            )
+
+        elif self.service == "postgres":
+            # TODO: Add PostgreSQL MCP server implementation when available.
+            raise NotImplementedError("PostgreSQL MCP server not yet implemented")
+
+        else:
+            raise ValueError(f"Unsupported service: {self.service}")
+
+    async def _execute_with_streaming(self, instruction: str) -> Dict[str, Any]:
         """
         Execute instruction with agent using streaming response.
         
         Args:
             instruction: The instruction/prompt to execute
-            **service_config: Service-specific configuration
+            (Service configuration is taken from self.service_config)
             
         Returns:
             Dictionary containing execution results
@@ -137,82 +240,53 @@ class MCPAgent:
         start_time = time.time()
 
         try:
+            # Refresh service configuration before each execution
+            self._refresh_service_config()
+
             # Create MCP server
-            async with await self._create_mcp_server(**service_config) as server:
+            async with await self._create_mcp_server() as server:
                 # Create agent
                 agent = Agent(name=f"{self.service.title()} Agent", mcp_servers=[server])
                 
                 # Configure model settings
                 ModelSettings.tool_choice = "required"
 
-                # Set service-specific environment variables
-                if self.service == "notion" and service_config.get("notion_key"):
-                    os.environ["NOTION_API_KEY"] = service_config["notion_key"]
-                elif self.service == "github" and service_config.get("github_token"):
-                    os.environ["GITHUB_TOKEN"] = service_config["github_token"]
+                # Service secrets are injected via environment variables inside _create_mcp_server.
 
                 # Prepare conversation
                 conversation = [{"content": instruction, "role": "user"}]
 
-                # Try non-streaming first to avoid logprobs issue
-                try:
-                    # Use non-streaming run
-                    result = await Runner.run(
-                        agent,
-                        max_turns=20,
-                        input=conversation,
-                        run_config=RunConfig(model_provider=self.model_provider),
-                    )
-                    
-                    # Process non-streaming result
-                    print("\n[Agent completed task]")
-                    
-                except Exception as non_streaming_error:
-                    logger.warning(f"Non-streaming failed, falling back to streaming: {non_streaming_error}")
-                    
-                    # Fall back to streaming
-                    result = Runner.run_streamed(
-                        agent,
-                        max_turns=20,
-                        input=conversation,
-                        run_config=RunConfig(model_provider=self.model_provider),
-                    )
+                # Run agent with streaming
+                result = Runner.run_streamed(
+                    agent,
+                    max_turns=20,
+                    input=conversation,
+                    run_config=RunConfig(model_provider=self.model_provider),
+                )
 
-                    # Add small delay to ensure background task starts
-                    await asyncio.sleep(0.1)
+                # Add small delay to ensure background task starts
+                await asyncio.sleep(0.1)
 
-                    # Process streaming events
-                    event_count = 0
-                    async for event in result.stream_events():
-                        event_count += 1
-                        logger.debug(f"Event {event_count}: {event}")
+                # Process streaming events
+                event_count = 0
+                async for event in result.stream_events():
+                    event_count += 1
+                    logger.debug(f"Event {event_count}: {event}")
 
-                        # Check if event has type attribute
-                        if hasattr(event, "type"):
-                            logger.debug(f"Event type: {event.type}")
+                    if hasattr(event, "type"):
+                        logger.debug(f"Event type: {event.type}")
 
-                            if event.type == "raw_response_event":
-                                # Handle text delta events without strict type checking
-                                # This avoids pydantic validation errors for missing 'logprobs' field
-                                if (hasattr(event, "data") and 
-                                    hasattr(event.data, "type") and 
-                                    event.data.type == "response.output_text.delta" and
-                                    hasattr(event.data, "delta")):
-                                    # Print token deltas as we receive them
-                                    delta_text = event.data.delta
-                                    print(delta_text, end="", flush=True)
+                        if event.type == "raw_response_event":
+                            if hasattr(event, "data") and isinstance(
+                                event.data, ResponseTextDeltaEvent
+                            ):
+                                delta_text = event.data.delta
+                                print(delta_text, end="", flush=True)
 
-                            elif event.type == "run_item_stream_event":
-                                if hasattr(event, "item"):
-                                    if hasattr(event.item, "type"):
-                                        if event.item.type == "tool_call_item":
-                                            tool_name = "Unknown"
-                                            if (
-                                                hasattr(event.item, "raw_item")
-                                                and hasattr(event.item.raw_item, "name")
-                                            ):
-                                                tool_name = event.item.raw_item.name
-                                            logger.info(f"\n-- Calling {self.service.title()} Tool: {tool_name}...")
+                        elif event.type == "run_item_stream_event":
+                            if hasattr(event, "item") and getattr(event.item, "type", "") == "tool_call_item":
+                                tool_name = getattr(getattr(event.item, "raw_item", None), "name", "Unknown")
+                                logger.info(f"\n-- Calling {self.service.title()} Tool: {tool_name}...")
 
                 # Extract token usage from raw responses
                 token_usage = {}
@@ -279,13 +353,13 @@ class MCPAgent:
                 "error": str(e),
             }
 
-    async def execute(self, instruction: str, **service_config) -> Dict[str, Any]:
+    async def execute(self, instruction: str) -> Dict[str, Any]:
         """
         Execute instruction with automatic retries on transient errors.
         
         Args:
             instruction: The instruction/prompt to execute
-            **service_config: Service-specific configuration (e.g., notion_key, github_token)
+            (Service configuration is taken from self.service_config)
             
         Returns:
             Dictionary containing:
@@ -297,8 +371,10 @@ class MCPAgent:
             - error: error message if failed
         """
         for attempt in range(1, self.max_retries + 1):
+            # Merge default config with any overrides supplied at call time
+
             result = await asyncio.wait_for(
-                self._execute_with_streaming(instruction, **service_config),
+                self._execute_with_streaming(instruction),
                 timeout=self.timeout
             )
 
@@ -327,19 +403,19 @@ class MCPAgent:
         # Should never reach here, but return the last result as fallback
         return result
 
-    def execute_sync(self, instruction: str, **service_config) -> Dict[str, Any]:
+    def execute_sync(self, instruction: str) -> Dict[str, Any]:
         """
         Synchronous wrapper for execute method.
         
         Args:
             instruction: The instruction/prompt to execute
-            **service_config: Service-specific configuration
+            (Service configuration is taken from self.service_config)
             
         Returns:
             Dictionary containing execution results
         """
         try:
-            return asyncio.run(self.execute(instruction, **service_config))
+            return asyncio.run(self.execute(instruction))
         except asyncio.TimeoutError:
             self._usage_stats["failed_executions"] += 1
             return {
@@ -418,9 +494,8 @@ def main():
 
     # Example execution
     instruction = "List all pages in my Notion workspace"
-    service_config = {"notion_key": os.getenv("EVAL_NOTION_API_KEY")}
 
-    result = agent.execute_sync(instruction, **service_config)
+    result = agent.execute_sync(instruction)
     print(f"Success: {result['success']}")
     print(f"Token usage: {result['token_usage']}")
     print(f"Usage stats: {agent.get_usage_stats()}")

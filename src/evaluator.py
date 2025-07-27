@@ -41,18 +41,26 @@ class MCPEvaluator:
         self.base_url = model_config.base_url
         self.api_key = model_config.api_key
 
-        # Initialize agent for LLM and MCP server management
+        # Initialize managers using the factory pattern (simplified)
+        self.task_manager = MCPServiceFactory.create_task_manager(service)
+        self.state_manager = MCPServiceFactory.create_state_manager(service)
+
+        # Obtain static service configuration from state manager (e.g., notion_key)
+        self.service_config = self.state_manager.get_service_config_for_agent()
+
+        # Initialize agent for LLM and MCP server management. The agent will
+        # automatically refresh its service configuration from the state
+        # manager before each execution, so per-task manual updates are no
+        # longer needed.
         self.agent = MCPAgent(
             model_name=self.actual_model_name,
             api_key=self.api_key,
             base_url=self.base_url,
             service=service,
             timeout=timeout,
+            service_config=self.service_config,
+            service_config_provider=self.state_manager.get_service_config_for_agent,
         )
-        
-        # Initialize managers using the factory pattern (simplified)
-        self.task_manager = MCPServiceFactory.create_task_manager(service)
-        self.state_manager = MCPServiceFactory.create_state_manager(service)
 
         # Initialize results reporter
         self.results_reporter = ResultsReporter()
@@ -168,15 +176,15 @@ class MCPEvaluator:
 
         # Stage 2: Execute the task using the agent
         logger.info("\n==================== Stage 2: Executing Task =======================")
-        
+
+        # NOTE: The agent now refreshes its service configuration internally, so
+        # we no longer need to perform that step here.
+
         # Get task instruction from task manager
         task_instruction = self.task_manager.get_task_instruction(task)
-        
-        # Get service-specific configuration from state manager
-        service_config = self.state_manager.get_service_config_for_agent()
-        
+
         # Execute with agent
-        agent_result = self.agent.execute_sync(task_instruction, **service_config)
+        agent_result = self.agent.execute_sync(task_instruction)
         
         # Stage 3: Verify the task result using task manager
         logger.info("\n==================== Stage 3: Verifying Task =======================")
