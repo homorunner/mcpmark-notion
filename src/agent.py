@@ -220,8 +220,26 @@ class MCPAgent:
             )
 
         elif self.service == "postgres":
-            # TODO: Add PostgreSQL MCP server implementation when available.
-            raise NotImplementedError("PostgreSQL MCP server not yet implemented")
+            host = cfg.get("host", "localhost")
+            port = cfg.get("port", 5432)
+            username = cfg.get("username")
+            password = cfg.get("password")
+
+            database = cfg.get("current_database") or cfg.get("database")
+
+            if not all([username, password, database]):
+                raise ValueError("PostgreSQL service requires username, password, and database in service_config")
+
+            database_url = f"postgresql://{username}:{password}@{host}:{port}/{database}"
+
+            return MCPServerStdio(
+                params={
+                    "command": "npx",
+                    "args": ["-y", "@modelcontextprotocol/server-postgres", database_url],
+                },
+                client_session_timeout_seconds=120,
+                cache_tools_list=True,
+            )
 
         else:
             raise ValueError(f"Unsupported service: {self.service}")
