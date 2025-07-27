@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Notion Task Manager for MCPBench Evaluation Pipeline
 ====================================================
@@ -80,18 +79,18 @@ class NotionTaskManager(BaseTaskManager):
     # =========================================================================
     # Service-specific implementations for template methods
     # =========================================================================
-    
+
     def _get_service_directory_name(self) -> str:
         """Return the service directory name for Notion."""
         return "notion"
-    
+
     def _find_task_files(self, category_dir: Path) -> List[Dict[str, Any]]:
         """Find task files in Notion category directory.
-        
+
         Notion tasks are organized as task_X directories with description.md and verify.py.
         """
         task_files = []
-        
+
         # Find task directories within each category
         for task_dir in category_dir.iterdir():
             if not task_dir.is_dir() or not task_dir.name.startswith("task_"):
@@ -112,9 +111,9 @@ class NotionTaskManager(BaseTaskManager):
                     "instruction_path": description_path,
                     "verification_path": verify_path
                 })
-        
+
         return task_files
-    
+
     def _create_task_from_files(self, category_name: str, task_files_info: Dict[str, Any]) -> Optional[NotionTask]:
         """Create a NotionTask from file information."""
         return NotionTask(
@@ -124,10 +123,10 @@ class NotionTaskManager(BaseTaskManager):
             category=category_name,
             task_id=task_files_info["task_id"],
         )
-    
+
     def _get_verification_command(self, task: NotionTask) -> List[str]:
         """Get the verification command for Notion tasks.
-        
+
         Notion verification requires the duplicated template ID.
         """
         return [
@@ -135,11 +134,11 @@ class NotionTaskManager(BaseTaskManager):
             str(task.task_verification_path),
             task.duplicated_initial_state_id or "",
         ]
-    
+
     def _format_task_instruction(self, base_instruction: str) -> str:
         """Format task instruction with Notion-specific additions."""
         return base_instruction + "\n\nNote: Based on your understanding, solve the task all at once by yourself, don't ask for my opinions on anything."
-    
+
     def _pre_execution_check(self, task: NotionTask) -> Dict[str, Any]:
         """Check if duplication succeeded before execution."""
         if task.duplicated_initial_state_id is None:

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Notion Login Helper for MCPBench
 =================================
