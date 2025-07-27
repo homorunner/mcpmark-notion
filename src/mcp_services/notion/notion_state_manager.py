@@ -439,7 +439,7 @@ class NotionStateManager(BaseStateManager):
             try:
                 with sync_playwright() as p:
                     browser_type = getattr(p, self.browser_name)
-                    browser: Browser = browser_type.launch(headless=True)
+                    browser: Browser = browser_type.launch(headless=self.headless)
                     context = browser.new_context(storage_state=str(self.state_file))
                     page = context.new_page()
 
