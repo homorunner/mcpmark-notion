@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Service Definitions for MCPBench
 ================================
@@ -72,7 +71,7 @@ SERVICES = {
         "mcp_server": None,
         "eval_config": None
     },
-    
+
     "github": {
         "config_schema": {
             "api_key": {
@@ -97,7 +96,7 @@ SERVICES = {
         },
         "components": {
             "task_manager": "src.mcp_services.github.github_task_manager.GitHubTaskManager",
-            "state_manager": "src.mcp_services.github.github_state_manager.GitHubStateManager", 
+            "state_manager": "src.mcp_services.github.github_state_manager.GitHubStateManager",
             "login_helper": "src.mcp_services.github.github_login_helper.GitHubLoginHelper",
         },
         "config_mapping": {
@@ -115,7 +114,7 @@ SERVICES = {
         "mcp_server": None,
         "eval_config": None
     },
-    
+
     "filesystem": {
         "config_schema": {
             "test_root": {
@@ -147,7 +146,7 @@ SERVICES = {
         "mcp_server": None,
         "eval_config": None
     },
-    
+
     "playwright": {
         "config_schema": {
             "browser": {
@@ -214,7 +213,7 @@ SERVICES = {
         "mcp_server": None,
         "eval_config": None
     },
-    
+
     "postgres": {
         "config_schema": {
             "host": {
@@ -269,5 +268,5 @@ def get_service_definition(service_name: str) -> dict:
 
 def get_supported_services() -> list:
     """Get list of implemented services."""
-    return [name for name, config in SERVICES.items() 
+    return [name for name, config in SERVICES.items()
             if config["components"]["task_manager"] is not None]
