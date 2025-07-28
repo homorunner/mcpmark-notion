@@ -23,11 +23,3 @@ Task Steps
       `Successfully migrated <N> assets to the retirement queue on 2025-03-24.`
 
       • `<N>` is the total number of items moved.
-
----
-Constraints & Notes
-• Do **NOT** create or modify any database *views*.
-• Do **NOT** add properties of unsupported types (e.g. people, files, formula, roll-up, relation, etc.).  
-• All property names, option names, page titles, and database titles are **case-sensitive** and must match this description exactly.
-
-The task will be verified automatically. Make sure all criteria above are met exactly.
