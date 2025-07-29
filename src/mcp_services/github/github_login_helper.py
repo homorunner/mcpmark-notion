@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 GitHub Login Helper for MCPBench
 ================================
@@ -37,14 +36,14 @@ class GitHubLoginHelper(BaseLoginHelper):
         """
         self.token = token
         self.state_path = state_path or Path.home() / ".mcpbench" / "github_auth.json"
-        
+
         # Ensure state directory exists
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
 
     def login_and_save_state(self, **kwargs) -> bool:
         """
         Validate GitHub token and save authentication state.
-        
+
         Returns:
             bool: True if authentication successful, False otherwise
         """
@@ -64,7 +63,7 @@ class GitHubLoginHelper(BaseLoginHelper):
 
             # Get user information
             response = session.get("https://api.github.com/user")
-            
+
             if response.status_code != 200:
                 logger.error(f"GitHub authentication failed: {response.status_code} {response.text}")
                 return False
@@ -74,7 +73,7 @@ class GitHubLoginHelper(BaseLoginHelper):
 
             # Get token scopes
             token_scopes = self._get_token_scopes(session)
-            
+
             # Save authentication state
             auth_state = {
                 "user": user_info,
@@ -109,14 +108,14 @@ class GitHubLoginHelper(BaseLoginHelper):
     def _verify_required_permissions(self, scopes: list) -> bool:
         """
         Verify that the token has the minimum required permissions.
-        
+
         For MCPBench GitHub tasks, we typically need:
         - repo (for repository access)
         - read:user (for user information)
         """
         required_scopes = ["repo"]  # Minimum requirement
         recommended_scopes = ["repo", "read:user", "read:org"]
-        
+
         has_required = all(scope in scopes for scope in required_scopes)
         if not has_required:
             logger.error(f"Token missing required scopes. Required: {required_scopes}, Available: {scopes}")
@@ -133,11 +132,11 @@ class GitHubLoginHelper(BaseLoginHelper):
         try:
             with open(self.state_path, 'w') as f:
                 json.dump(auth_state, f, indent=2, default=str)
-            
+
             # Set restrictive permissions (user read/write only)
             self.state_path.chmod(0o600)
             logger.info(f"Authentication state saved to: {self.state_path}")
-            
+
         except Exception as e:
             logger.error(f"Failed to save authentication state: {e}")
 
@@ -211,4 +210,4 @@ class GitHubLoginHelper(BaseLoginHelper):
             return response.status_code == 200
 
         except Exception:
-            return False 
+            return False

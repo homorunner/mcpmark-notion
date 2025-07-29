@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 GitHub Task Manager for MCPBench Evaluation Pipeline
 ====================================================
@@ -35,58 +34,58 @@ class GitHubTask(BaseTask):
 
 class GitHubTaskManager(BaseTaskManager):
     """Manages task discovery, filtering, and verification for GitHub-based MCPBench evaluation."""
-    
+
     def __init__(self, tasks_root: Path = None):
         """Initialize GitHub task manager.
-        
+
         Args:
             tasks_root: Path to the tasks directory
         """
         if tasks_root is None:
             tasks_root = Path(__file__).resolve().parents[3] / "tasks"
-        
+
         # Call parent constructor
         super().__init__(tasks_root, service="github", task_class=GitHubTask,
                          task_organization="file")  # GitHub uses file-based tasks
-    
-    
-    # =========================================================================  
+
+
+    # =========================================================================
     # Service-specific implementations
     # =========================================================================
-    
+
     def _find_task_files(self, category_dir: Path) -> List[Dict[str, Any]]:
         """Find task files in GitHub category directory.
-        
+
         GitHub tasks are organized as task_X.md files with task_X_verify.py scripts.
         """
         task_files = []
-        
+
         # Find all task files in this category
         for task_file in category_dir.glob("task_*.md"):
             task_id = self._extract_task_id(task_file.name)
             if task_id is None:
                 continue
-            
+
             # Look for corresponding verification script
             verify_file = task_file.parent / f"task_{task_id}_verify.py"
             if not verify_file.exists():
                 logger.warning("No verification script found for task: %s", task_file)
                 continue
-            
+
             task_files.append({
                 "task_id": task_id,
                 "instruction_path": task_file,
                 "verification_path": verify_file
             })
-        
+
         return task_files
-    
+
     def _extract_task_id(self, filename: str) -> Optional[int]:
         """Extract task ID from filename like 'task_1.md'."""
         import re
         match = re.match(r'task_(\d+)\.md', filename)
         return int(match.group(1)) if match else None
-    
+
     def _create_task_from_files(self, category_name: str, task_files_info: Dict[str, Any]) -> Optional[GitHubTask]:
         """Create a GitHubTask from file information."""
         return GitHubTask(
@@ -96,20 +95,20 @@ class GitHubTaskManager(BaseTaskManager):
             category=category_name,
             task_id=task_files_info["task_id"]
         )
-    
+
     def _get_verification_command(self, task: GitHubTask) -> List[str]:
         """Get the verification command for GitHub tasks."""
         return [sys.executable, str(task.task_verification_path)]
-    
+
     def _format_task_instruction(self, base_instruction: str) -> str:
         """Format task instruction with GitHub-specific additions."""
         return base_instruction + "\n\nNote: Use GitHub tools to complete this task. Work systematically and verify your actions."
-    
+
     def _post_execution_hook(self, task: GitHubTask, success: bool) -> None:
         """Track created repositories for cleanup if needed."""
         if task.category == 'basic_repo_operations' and success:
             self._track_created_repositories_from_verification(task)
-    
+
     def _track_created_repositories_from_verification(self, task: GitHubTask):
         """Track created repositories from verification for cleanup."""
         try:
@@ -121,7 +120,7 @@ class GitHubTaskManager(BaseTaskManager):
                 logger.info("Tracked repository 'mcpbench-test-repo' for cleanup")
         except Exception as e:
             logger.warning(f"Failed to track created repositories: {e}")
-    
-    
+
+
     # Note: execute_task and get_task_instruction are now implemented in the base class
-    # Service-specific behavior is handled through the template methods above 
+    # Service-specific behavior is handled through the template methods above

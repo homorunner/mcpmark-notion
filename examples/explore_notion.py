@@ -4,8 +4,8 @@ A small CLI helper to quickly inspect the structure and contents of a Notion pag
 by providing its title.
 
 Usage examples:
-    python -m examples.explore_notion --title "My Project" --type page
-    python -m examples.explore_notion --title "Tasks" --type database --show-rows --max-rows 10
+    python -m examples.explore_notion --id 01234567abcdef0123456789abcdef01 --type page
+    python -m examples.explore_notion --id abcdef0123456789abcdef0123456789 --type database --show-rows --max-rows 10
 
 The script relies on an environment variable NOTION_API_KEY set in a .env file at the project
 root (handled by tasks.utils.notion_utils.get_notion_client).
@@ -73,6 +73,8 @@ def _print_block(block: dict, indent: int = 0, preview_len: int = 10):
     prefix = "  " * indent
     block_type = block.get("type", "unknown")
     text = _preview(nutils.get_block_plain_text(block), preview_len)
+    # if text in ["🛠️ Push for Enterprise", "🩶 Boost Employee Engagement", "🔄 Digital Transformation Initiative"]:
+    #     import pdb; pdb.set_trace()
     print(f"{prefix}- [{block_type}] {text}")
 
 
@@ -171,9 +173,9 @@ def main():
         description="Explore a Notion page or database by title."
     )
     parser.add_argument(
-        "--title",
+        "--id",
         required=True,
-        help="Title (or partial title) of the page/database to explore.",
+        help="The Notion object ID (page or database) to explore.",
     )
     parser.add_argument(
         "--type",
@@ -195,7 +197,7 @@ def main():
     parser.add_argument(
         "--preview-len",
         type=int,
-        default=10,
+        default=50,
         help="Number of characters to preview for block text and property values (default: 10)",
     )
 
@@ -204,19 +206,11 @@ def main():
     notion = nutils.get_notion_client()
 
     if args.type == "page":
-        page_id = nutils.find_page(notion, args.title)
-        if not page_id:
-            print(f"No page found with title containing '{args.title}'.")
-            sys.exit(1)
-        explore_page(notion, page_id, preview_len=args.preview_len)
+        explore_page(notion, args.id, preview_len=args.preview_len)
     else:  # database
-        db_id = nutils.find_database(notion, args.title)
-        if not db_id:
-            print(f"No database found with title containing '{args.title}'.")
-            sys.exit(1)
         explore_database(
             notion,
-            db_id,
+            args.id,
             show_rows=args.show_rows,
             max_rows=args.max_rows,
             preview_len=args.preview_len,

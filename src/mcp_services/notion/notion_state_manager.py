@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Notion State Manager for MCPBench
 =================================
@@ -79,26 +78,26 @@ class NotionStateManager(BaseStateManager):
         self.state_file = Path("notion_state.json")
         # Parent page under which duplicated pages should be moved for evaluation
         self.eval_parent_page_title = eval_parent_page_title
-        
+
         # Validate initialization
         if not self.source_notion_client or not self.eval_notion_client:
             raise ValueError("Both source_notion_key and eval_notion_key must be provided and valid")
-        
+
         if not self.state_file.exists():
             raise FileNotFoundError("Authentication state 'notion_state.json' not found. Run the Notion login helper first.")
-        
+
         logger.info("Notion state manager initialized successfully")
-    
+
     # =========================================================================
     # Core Template Methods (Required by BaseStateManager)
     # =========================================================================
-    
+
     def _create_initial_state(self, task: BaseTask) -> Optional[InitialStateInfo]:
         """Create initial state by duplicating Notion page."""
         if not isinstance(task, NotionTask):
             logger.error("Task must be NotionTask for Notion state manager")
             return None
-        
+
         try:
             initial_state_title = self._category_to_initial_state_title(task.category)
             initial_state_info = self._find_initial_state_by_title(initial_state_title)
@@ -108,11 +107,11 @@ class NotionStateManager(BaseStateManager):
                 return None
 
             _, initial_state_url = initial_state_info
-            
+
             duplicated_url, duplicated_id = self._duplicate_initial_state_for_task(
                 initial_state_url, task.category, task.name
             )
-            
+
             return InitialStateInfo(
                 state_id=duplicated_id,
                 state_url=duplicated_url,
@@ -122,26 +121,26 @@ class NotionStateManager(BaseStateManager):
                     'task_name': task.name
                 }
             )
-            
+
         except Exception as e:
             logger.error(f"Failed to create initial state for {task.name}: {e}")
             return None
-    
+
     def _store_initial_state_info(self, task: BaseTask, state_info: InitialStateInfo) -> None:
         """Store initial state information in NotionTask object."""
         if isinstance(task, NotionTask):
             task.duplicated_initial_state_id = state_info.state_id
             task.duplicated_initial_state_url = state_info.state_url
             task.original_initial_state_url = state_info.metadata.get('original_url')
-            
+
             # Track the duplicated page for cleanup
             self.track_resource('page', state_info.state_id, state_info.metadata)
-    
+
     def _cleanup_task_initial_state(self, task: BaseTask) -> bool:
         """Clean up initial state for a specific Notion task."""
         if not isinstance(task, NotionTask):
             return True  # Nothing to clean up for non-Notion tasks
-        
+
         initial_state_id = task.duplicated_initial_state_id
         if not initial_state_id:
             logger.warning("No duplicated initial state ID found for task %s, skipping cleanup.", task.name)
@@ -151,18 +150,18 @@ class NotionStateManager(BaseStateManager):
             # Archive the duplicated page
             self.eval_notion_client.pages.update(page_id=initial_state_id, archived=True)
             logger.info("Archived page initial state: %s", initial_state_id)
-            
+
             # Remove from tracked resources to avoid duplicate cleanup
             self.tracked_resources = [
-                r for r in self.tracked_resources 
+                r for r in self.tracked_resources
                 if not (r['type'] == 'page' and r['id'] == initial_state_id)
             ]
-            
+
             return True
         except Exception as e:
             logger.error("Failed to archive initial state %s: %s", initial_state_id, e)
             return False
-    
+
     def _cleanup_single_resource(self, resource: Dict[str, Any]) -> bool:
         """Clean up a single Notion resource."""
         if resource['type'] == 'page':
@@ -173,7 +172,7 @@ class NotionStateManager(BaseStateManager):
             except Exception as e:
                 logger.error(f"Failed to archive Notion page {resource['id']}: {e}")
                 return False
-        
+
         logger.warning(f"Unknown resource type for cleanup: {resource['type']}")
         return False
 
@@ -439,7 +438,7 @@ class NotionStateManager(BaseStateManager):
             try:
                 with sync_playwright() as p:
                     browser_type = getattr(p, self.browser_name)
-                    browser: Browser = browser_type.launch(headless=True)
+                    browser: Browser = browser_type.launch(headless=self.headless)
                     context = browser.new_context(storage_state=str(self.state_file))
                     page = context.new_page()
 
@@ -476,21 +475,21 @@ class NotionStateManager(BaseStateManager):
         raise RuntimeError(
             f"Initial state duplication failed for task '{task_name}' after {max_retries + 1} attempts: {last_exc}"
         )
-    
+
     def get_service_config_for_agent(self) -> dict:
         """
         Get service-specific configuration for agent execution.
-        
+
         Returns:
             Dictionary containing configuration needed by the agent/MCP server
         """
         from src.config.config_schema import ConfigRegistry
-        
+
         # Get the eval_api_key from config registry
         config = ConfigRegistry.get_config("notion").get_all()
         service_config = {}
-        
+
         if "eval_api_key" in config:
             service_config["notion_key"] = config["eval_api_key"]
-        
+
         return service_config

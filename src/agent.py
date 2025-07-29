@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Unified Agent Implementation for MCPBench
 =========================================
@@ -48,7 +47,7 @@ logger = get_logger(__name__)
 class MCPAgent:
     """
     Unified agent for LLM and MCP server management.
-    
+
     This agent handles the integration of:
     - Model: LLM configuration (model name, API key, base URL)
     - Agent Framework: Currently supports OpenAI Agents SDK
@@ -220,8 +219,26 @@ class MCPAgent:
             )
 
         elif self.service == "postgres":
-            # TODO: Add PostgreSQL MCP server implementation when available.
-            raise NotImplementedError("PostgreSQL MCP server not yet implemented")
+            host = cfg.get("host", "localhost")
+            port = cfg.get("port", 5432)
+            username = cfg.get("username")
+            password = cfg.get("password")
+
+            database = cfg.get("current_database") or cfg.get("database")
+
+            if not all([username, password, database]):
+                raise ValueError("PostgreSQL service requires username, password, and database in service_config")
+
+            database_url = f"postgresql://{username}:{password}@{host}:{port}/{database}"
+
+            return MCPServerStdio(
+                params={
+                    "command": "npx",
+                    "args": ["-y", "@modelcontextprotocol/server-postgres", database_url],
+                },
+                client_session_timeout_seconds=120,
+                cache_tools_list=True,
+            )
 
         else:
             raise ValueError(f"Unsupported service: {self.service}")
@@ -229,11 +246,11 @@ class MCPAgent:
     async def _execute_with_streaming(self, instruction: str) -> Dict[str, Any]:
         """
         Execute instruction with agent using streaming response.
-        
+
         Args:
             instruction: The instruction/prompt to execute
             (Service configuration is taken from self.service_config)
-            
+
         Returns:
             Dictionary containing execution results
         """
@@ -247,7 +264,7 @@ class MCPAgent:
             async with await self._create_mcp_server() as server:
                 # Create agent
                 agent = Agent(name=f"{self.service.title()} Agent", mcp_servers=[server])
-                
+
                 # Configure model settings
                 ModelSettings.tool_choice = "required"
 
@@ -259,7 +276,7 @@ class MCPAgent:
                 # Run agent with streaming
                 result = Runner.run_streamed(
                     agent,
-                    max_turns=20,
+                    max_turns=50,
                     input=conversation,
                     run_config=RunConfig(model_provider=self.model_provider),
                 )
@@ -356,11 +373,11 @@ class MCPAgent:
     async def execute(self, instruction: str) -> Dict[str, Any]:
         """
         Execute instruction with automatic retries on transient errors.
-        
+
         Args:
             instruction: The instruction/prompt to execute
             (Service configuration is taken from self.service_config)
-            
+
         Returns:
             Dictionary containing:
             - success: bool
@@ -384,10 +401,10 @@ class MCPAgent:
 
             # Standardize error message
             from src.errors import standardize_error_message, is_retryable_error, get_retry_delay
-            
+
             error_msg = standardize_error_message(result["error"] or "Unknown error", service=self.service)
             result["error"] = error_msg
-            
+
             if is_retryable_error(result["error"]) and attempt < self.max_retries:
                 wait_seconds = get_retry_delay(attempt)
                 logger.warning(
@@ -406,11 +423,11 @@ class MCPAgent:
     def execute_sync(self, instruction: str) -> Dict[str, Any]:
         """
         Synchronous wrapper for execute method.
-        
+
         Args:
             instruction: The instruction/prompt to execute
             (Service configuration is taken from self.service_config)
-            
+
         Returns:
             Dictionary containing execution results
         """
@@ -430,12 +447,12 @@ class MCPAgent:
     def get_usage_stats(self) -> Dict[str, Any]:
         """
         Get usage statistics for this agent.
-        
+
         Returns:
             Dictionary containing usage statistics
         """
         stats = self._usage_stats.copy()
-        
+
         # Calculate averages
         total_executions = stats["successful_executions"] + stats["failed_executions"]
         if total_executions > 0:
