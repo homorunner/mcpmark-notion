@@ -258,7 +258,7 @@ class MCPAgent:
                 # Run agent with streaming
                 result = Runner.run_streamed(
                     agent,
-                    max_turns=20,
+                    max_turns=50,
                     input=conversation,
                     run_config=RunConfig(model_provider=self.model_provider),
                 )
