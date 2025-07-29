@@ -1,1 +1,0 @@
-Hi, please go to my online resume page ("Online Resume") and update one of my projects called "Bees Together Landing Page." First, please remove the "UI Design" tag, since I think it's not very relevant to this project. Also, please change the start date to August 15, 2023. Leave the other parts as they are. Thanks!

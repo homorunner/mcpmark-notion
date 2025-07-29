@@ -121,8 +121,11 @@ def verify(notion: Client, main_id: str = None) -> bool:
                         if (date_text in notion_utils.get_block_plain_text(date_block) and 
                             description_text in notion_utils.get_block_plain_text(description_block) and
                             title_annotations.get("bold") and
-                            date_annotations.get("italic") and date_annotations.get("color") == "gray" and
-                            description_annotations.get("color") == "default"):
+                            date_annotations.get("italic") and 
+                            date_annotations.get("color") == "gray" and
+                            description_annotations.get("color") == "default" and
+                            description_annotations.get("italic") != True and
+                            description_annotations.get("bold") != True):
                             print("Success: Verified new work history entry.")
                             return True
     
