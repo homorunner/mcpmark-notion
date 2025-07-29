@@ -247,12 +247,26 @@ SERVICES = {
             }
         },
         "components": {
-            # Placeholder - not yet implemented
-            "task_manager": None,
-            "state_manager": None,
-            "login_helper": None,
+            "task_manager": "src.mcp_services.postgres.postgres_task_manager.PostgresTaskManager",
+            "state_manager": "src.mcp_services.postgres.postgres_state_manager.PostgresStateManager",
+            "login_helper": "src.mcp_services.postgres.postgres_login_helper.PostgresLoginHelper",
         },
-        "config_mapping": {},
+        "config_mapping": {
+            "state_manager": {
+                "host": "host",
+                "port": "port",
+                "database": "database",
+                "username": "username",
+                "password": "password",
+            },
+            "login_helper": {
+                "host": "host",
+                "port": "port",
+                "database": "database",
+                "username": "username",
+                "password": "password",
+            }
+        },
         "mcp_server": None,
         "eval_config": None
     }
