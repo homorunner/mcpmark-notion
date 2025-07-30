@@ -29,7 +29,7 @@ EXPECTED_HEADINGS_COUNT = 9   # Based on actual website structure
 EXPECTED_STATUS_CODES = ["200", "201", "400", "401", "404", "500"]
 
 # Accuracy thresholds for comparison
-MIN_ACCURACY_THRESHOLD = 0.8  # 80% accuracy required to pass
+MIN_ACCURACY_THRESHOLD = 1.0  # 100% accuracy required to pass
 
 # =============================================================================
 # INDEPENDENT PLAYWRIGHT VERIFICATION
@@ -293,20 +293,20 @@ def verify_extraction_requirements(data: Dict[str, Any]) -> bool:
         print(f"❌ Page headings: {heading_count}/{EXPECTED_HEADINGS_COUNT} (expected exactly {EXPECTED_HEADINGS_COUNT})")
         success = False
     
-    # Check HTTP methods
+    # Check HTTP methods (require all 7)
     http_methods_count = data["http_methods"]["count"]
-    if http_methods_count >= 6:
+    if http_methods_count == len(EXPECTED_HTTP_METHODS):
         print(f"✅ HTTP methods: {http_methods_count}/{len(EXPECTED_HTTP_METHODS)}")
     else:
-        print(f"❌ HTTP methods: {http_methods_count}/{len(EXPECTED_HTTP_METHODS)} (expected at least 6)")
+        print(f"❌ HTTP methods: {http_methods_count}/{len(EXPECTED_HTTP_METHODS)} (expected exactly {len(EXPECTED_HTTP_METHODS)})")
         success = False
     
-    # Check status codes
+    # Check status codes (require all 6)
     status_codes_count = data["status_codes"]["count"]
-    if status_codes_count >= 5:
+    if status_codes_count == len(EXPECTED_STATUS_CODES):
         print(f"✅ Status codes: {status_codes_count}/{len(EXPECTED_STATUS_CODES)}")
     else:
-        print(f"❌ Status codes: {status_codes_count}/{len(EXPECTED_STATUS_CODES)} (expected at least 5)")
+        print(f"❌ Status codes: {status_codes_count}/{len(EXPECTED_STATUS_CODES)} (expected exactly {len(EXPECTED_STATUS_CODES)})")
         success = False
     
     return success
@@ -376,7 +376,7 @@ def verify_task() -> bool:
         print(f"   Actually: {independent_data['nav_links']['count']} nav links, {independent_data['headings']['count']} headings")
     
     else:
-        print(f"\n🎉 MCP agent successfully extracted content with ≥{MIN_ACCURACY_THRESHOLD*100}% accuracy in all categories!")
+        print(f"\n🎉 MCP agent successfully extracted content with {MIN_ACCURACY_THRESHOLD*100}% accuracy in all categories!")
     
     return overall_success
 

@@ -43,7 +43,7 @@ TEST_FORM_DATA = {
 }
 
 # Accuracy thresholds for comparison
-MIN_ACCURACY_THRESHOLD = 0.8  # 80% accuracy required to pass
+MIN_ACCURACY_THRESHOLD = 1.0  # 100% accuracy required to pass
 
 # =============================================================================
 # INDEPENDENT PLAYWRIGHT VERIFICATION
@@ -302,9 +302,9 @@ def compare_mcp_vs_independent(mcp_results: Dict, field_data: Dict, submission_d
         "extra": extra_fields
     }
     
-    # Compare form interaction (filling)
+    # Compare form interaction (filling) - require all 6 fields
     mcp_filled = mcp_results["findings"]["form_filled"]
-    actual_filled = submission_data["fields_filled_count"] >= 4
+    actual_filled = submission_data["fields_filled_count"] == len(EXPECTED_FORM_FIELDS)
     
     fill_accuracy = 1.0 if (mcp_filled and actual_filled) or (not mcp_filled and not actual_filled) else 0.0
     
@@ -348,12 +348,13 @@ def verify_form_requirements(field_data: Dict[str, Any], submission_data: Dict[s
         print(f"❌ Form fields: {total_fields}/{expected_fields} found (missing some fields)")
         success = False
     
-    # Check form submission capability
+    # Check form submission capability (require all 6 fields)
     fields_filled = submission_data["fields_filled_count"]
-    if fields_filled >= 4:  # Require at least 4 fields to be fillable
+    expected_fields_count = len(EXPECTED_FORM_FIELDS)
+    if fields_filled == expected_fields_count:
         print(f"✅ Form interaction: {fields_filled} fields successfully filled")
     else:
-        print(f"❌ Form interaction: Only {fields_filled} fields could be filled (expected at least 4)")
+        print(f"❌ Form interaction: Only {fields_filled}/{expected_fields_count} fields could be filled (expected exactly {expected_fields_count})")
         success = False
     
     # Check if form submission was attempted
@@ -433,7 +434,7 @@ def verify_task() -> bool:
         print(f"   Actually Fillable: {submission_data['fields_filled_count']} fields")
     
     else:
-        print(f"\n🎉 MCP agent successfully interacted with form with ≥{MIN_ACCURACY_THRESHOLD*100}% accuracy in all categories!")
+        print(f"\n🎉 MCP agent successfully interacted with form with {MIN_ACCURACY_THRESHOLD*100}% accuracy in all categories!")
     
     return overall_success
 

@@ -39,7 +39,7 @@ EXPECTED_NAVIGATION_TITLE = "Navigation Test"
 EXPECTED_FORMS_TITLE = "Order Form"
 
 # Accuracy thresholds for comparison
-MIN_ACCURACY_THRESHOLD = 0.8  # 80% accuracy required to pass
+MIN_ACCURACY_THRESHOLD = 1.0  # 100% accuracy required to pass
 
 # =============================================================================
 # INDEPENDENT PLAYWRIGHT VERIFICATION
@@ -461,7 +461,7 @@ def verify_task() -> bool:
         print(f"   Actually Successful: {navigation_data.get('navigation_success', False)}")
     
     else:
-        print(f"\n🎉 MCP agent successfully navigated with ≥{MIN_ACCURACY_THRESHOLD*100}% accuracy in all categories!")
+        print(f"\n🎉 MCP agent successfully navigated with {MIN_ACCURACY_THRESHOLD*100}% accuracy in all categories!")
     
     return overall_success
 
