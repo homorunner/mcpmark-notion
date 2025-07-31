@@ -1,0 +1,12 @@
+Research Subject Lists
+======================
+
+Machine Learning:
+- Neural networks
+- Deep learning algorithms
+- Natural language processing
+
+Web Development:
+- React frameworks
+- API design patterns
+- Database optimization

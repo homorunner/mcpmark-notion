@@ -1,38 +1,39 @@
-# Filesystem Task 3: Directory Operations
+# Filesystem Task 3: Create Directory Structure
 
 ## 📋 Task Description
 
-Use the filesystem MCP tools to create a directory structure and list its contents.
+Use the filesystem MCP tools to create a directory structure and populate it with files.
 
 ## 🎯 Task Objectives
 
-1. Create a new directory structure:
+1. Create a new directory structure in the test directory:
    ```
-   project/
+   new_project/
    ├── src/
-   │   ├── main.py
-   │   └── utils.py
-   ├── tests/
-   │   └── test_main.py
-   └── README.md
+   │   ├── main.txt
+   │   └── utils.txt
+   ├── docs/
+   │   └── readme.txt
+   └── config.txt
    ```
-2. Write appropriate content to each file:
-   - `main.py`: "# Main application file\nprint('Hello from main')"
-   - `utils.py`: "# Utility functions\ndef helper():\n    return 'Helper function'"
-   - `test_main.py`: "# Tests for main.py\nimport unittest"
-   - `README.md`: "# Project README\nThis is a sample project structure."
+2. Write specific content to each file:
+   - `main.txt`: "Main application code would go here"
+   - `utils.txt`: "Utility functions and helpers"
+   - `docs/readme.txt`: "Project documentation and setup instructions"
+   - `config.txt`: "Configuration settings for the project"
 3. Use `list_directory` to verify the structure was created correctly
 
 ## ✅ Verification Criteria
 
-- Directory `project` exists with correct subdirectories
-- All files exist in their correct locations
-- Each file contains the expected content
-- Directory structure matches the specification
+- Directory `new_project` exists in the test directory
+- Subdirectories `src` and `docs` exist within `new_project`
+- All 4 files exist in their correct locations
+- Each file contains the exact specified content
+- Directory structure matches the specification exactly
 
 ## 💡 Tips
 
-- Use `create_directory` to create the directory structure
-- Use `write_file` to create each file with its content
-- Remember to include the proper paths when creating nested files
-- Use `list_directory` to verify your work
+- Use `create_directory` to create the directory structure first
+- Use `write_file` with full paths to create nested files
+- Verify paths are correct when creating nested files
+- Use `list_directory` to check your work

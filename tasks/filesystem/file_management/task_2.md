@@ -1,27 +1,32 @@
-# Filesystem Task 6: Simple File Organization
+# Filesystem Task 6: File Organization and Count
 
 ## 📋 Task Description
 
-Use the filesystem MCP tools to organize text files into a simple structure.
+Use the filesystem MCP tools to organize files and create a summary.
 
 ## 🎯 Task Objectives
 
-1. Create a directory called `sorted`
-2. List all files in the current directory using `list_directory`
-3. For each `.txt` file:
-   - Move it to the `sorted` directory using `move_file`
-4. Create a file `sorted/count.txt` that contains the text: "Moved X files" (where X is the actual number)
+1. Create a directory called `organized_files`
+2. Use `list_directory` to find all `.txt` files in the root test directory
+3. Move all `.txt` files to the `organized_files` directory using `move_file`
+4. Create a file `organized_files/file_count.txt` that contains:
+   - The total number of files moved
+   - Current date of organization
+   - Simple format: "Moved X files on YYYY-MM-DD"
 
 ## ✅ Verification Criteria
 
-- Directory `sorted` exists
-- All `.txt` files have been moved to the `sorted` directory
-- No `.txt` files remain in the root directory
-- File `sorted/count.txt` exists with the correct count
+- Directory `organized_files` exists in the test directory
+- All `.txt` files from root directory have been moved to `organized_files`
+- No `.txt` files remain in the root test directory
+- File `organized_files/file_count.txt` exists
+- Count file shows correct number of moved files
+- Count file includes current date in YYYY-MM-DD format
 
 ## 💡 Tips
 
-- Start by creating the `sorted` directory
-- Use `list_directory` on the root path to see all files
+- Use `list_directory` to find all files in the root directory
+- Filter for `.txt` files only
 - Keep track of how many files you move
-- Remember to create the count file at the end
+- Use `move_file` to relocate files to the new directory
+- Create the count file after moving all other files

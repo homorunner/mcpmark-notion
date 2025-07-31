@@ -3,23 +3,22 @@
 Verification script for Filesystem Task 1: Create and Write File
 """
 
-import os
 import sys
 from pathlib import Path
-from datetime import datetime
 
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
 
 # Expected file name
-FILE_NAME = "hello_world.txt"
+FILE_NAME = "new_document.txt"
 
 # Expected content patterns
 EXPECTED_PATTERNS = [
-    "Hello, World!",
-    "MCPBench",
-    "timestamp"  # Should contain the word timestamp or actual timestamp
+    "New Document Created by MCP",
+    "MCP tools",
+    "Creation date:",
+    "Complete"
 ]
 
 # =============================================================================
@@ -27,12 +26,9 @@ EXPECTED_PATTERNS = [
 # =============================================================================
 
 def get_test_directory() -> Path:
-    """Get the test directory from environment variable."""
-    test_dir = os.getenv("FILESYSTEM_TEST_DIR")
-    if not test_dir:
-        print("❌ FILESYSTEM_TEST_DIR environment variable not set")
-        sys.exit(1)
-    return Path(test_dir)
+    """Get the test directory (hardcoded path)."""
+    # Use the default persistent test environment
+    return Path("/workspaces/MCPBench/test_environments/desktop")
 
 def verify_file_exists(test_dir: Path, file_name: str) -> bool:
     """Verify that the file exists in the test directory."""
@@ -75,11 +71,20 @@ def verify_file_content(test_dir: Path, file_name: str) -> bool:
             print(f"❌ File has only {len(lines)} lines (expected at least 3)")
             all_passed = False
         
-        # Check if first line contains "Hello, World!"
-        if lines and "Hello, World!" in lines[0]:
-            print("✅ First line contains 'Hello, World!'")
+        # Check if first line contains "New Document Created by MCP"
+        if lines and "New Document Created by MCP" in lines[0]:
+            print("✅ First line contains 'New Document Created by MCP'")
         else:
-            print("❌ First line does not contain 'Hello, World!'")
+            print("❌ First line does not contain 'New Document Created by MCP'")
+            all_passed = False
+        
+        # Check for date format YYYY-MM-DD
+        import re
+        date_pattern = r'\d{4}-\d{2}-\d{2}'
+        if re.search(date_pattern, content):
+            print("✅ Contains date in YYYY-MM-DD format")
+        else:
+            print("❌ Missing date in YYYY-MM-DD format")
             all_passed = False
         
         # Check for timestamp pattern (flexible check)
@@ -98,7 +103,7 @@ def verify_file_content(test_dir: Path, file_name: str) -> bool:
 
 def main():
     """Main verification function."""
-    print("🔍 Verifying Filesystem Task 1: Create and Write File")
+    print("🔍 Verifying Filesystem Task 1: Create New File")
     print("=" * 50)
     
     # Get test directory
