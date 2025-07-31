@@ -40,9 +40,9 @@ class FilesystemStateManager(BaseStateManager):
         if test_root:
             self.test_root = Path(test_root)
         else:
-            # Default to persistent test environment in repository
-            repo_root = Path(__file__).resolve().parents[3]
-            self.test_root = repo_root / "test_environments" / "desktop"
+            # Default to persistent test environment using relative path
+            script_dir = Path(__file__).parent
+            self.test_root = script_dir / "../../../test_environments/desktop"
 
         self.cleanup_on_exit = cleanup_on_exit
         self.current_task_dir: Optional[Path] = None

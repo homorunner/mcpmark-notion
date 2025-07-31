@@ -7,9 +7,10 @@ import sys
 from pathlib import Path
 
 def get_test_directory() -> Path:
-    """Get the test directory (hardcoded path)."""
-    # Use the default persistent test environment
-    return Path("/workspaces/MCPBench/test_environments/desktop")
+    """Get the test directory using relative path."""
+    # Use relative path from this script to test environment
+    script_dir = Path(__file__).parent
+    return script_dir / "../../../test_environments/desktop"
 
 def verify_file_sorting(test_dir: Path) -> bool:
     """Verify the file sorting by content was completed correctly."""
