@@ -31,8 +31,3 @@ Use the filesystem MCP tools to create a new file and write content to it.
 - File contains "MCP" and "Complete" text
 - Content is properly formatted with multiple lines
 
-## 💡 Tips
-
-- Use the `write_file` tool to create and write content
-- Include actual current date in the specified format
-- Ensure all content sections are included as shown

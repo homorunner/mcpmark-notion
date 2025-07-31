@@ -20,9 +20,3 @@ Use the filesystem MCP tools to read an existing file and make specific edits to
 - Original file structure is preserved
 - All other content remains unchanged
 
-## 💡 Tips
-
-- First use `read_file` to see the current content
-- Use `edit_file` to make the specific text replacements
-- Be precise with the text to replace - it must match exactly
-- Add the current date in YYYY-MM-DD format

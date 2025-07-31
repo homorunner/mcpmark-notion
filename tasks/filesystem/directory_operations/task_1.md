@@ -31,9 +31,3 @@ Use the filesystem MCP tools to create a directory structure and populate it wit
 - Each file contains the exact specified content
 - Directory structure matches the specification exactly
 
-## 💡 Tips
-
-- Use `create_directory` to create the directory structure first
-- Use `write_file` with full paths to create nested files
-- Verify paths are correct when creating nested files
-- Use `list_directory` to check your work

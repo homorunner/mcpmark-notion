@@ -23,10 +23,3 @@ Use filesystem MCP tools to sort text files based on their content.
 - No `.txt` files remain in the root directory
 - Files are correctly sorted based on content analysis
 
-## 💡 Tips
-
-- Use `list_directory` to get all files in the root directory
-- Filter for only `.txt` files
-- Use `read_file` to examine content before sorting
-- Search for "test" case-insensitively (both "test" and "Test" should match)
-- Use `move_file` to relocate files to appropriate directories

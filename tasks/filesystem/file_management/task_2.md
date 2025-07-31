@@ -23,10 +23,3 @@ Use the filesystem MCP tools to organize files and create a summary.
 - Count file shows correct number of moved files
 - Count file includes current date in YYYY-MM-DD format
 
-## 💡 Tips
-
-- Use `list_directory` to find all files in the root directory
-- Filter for `.txt` files only
-- Keep track of how many files you move
-- Use `move_file` to relocate files to the new directory
-- Create the count file after moving all other files
