@@ -230,3 +230,6 @@ __marimo__/
 *.egg-info
 
 .postgres
+
+# MCPBench backup directories
+.mcpbench_backups/
