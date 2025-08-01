@@ -46,7 +46,6 @@ class FilesystemStateManager(BaseStateManager):
 
         self.cleanup_on_exit = cleanup_on_exit
         self.current_task_dir: Optional[Path] = None
-        self.created_resources: List[Path] = []
         
         # Backup and restore functionality
         self.backup_dir: Optional[Path] = None
@@ -112,13 +111,6 @@ class FilesystemStateManager(BaseStateManager):
 
             logger.info(f"Using persistent test environment: {self.current_task_dir}")
 
-            # Store the test directory path in the task object for use by task manager
-            if hasattr(task, "__dict__"):
-                task.test_directory = str(self.current_task_dir)
-
-            # Set environment variable for verification scripts and MCP server
-            os.environ["FILESYSTEM_TEST_DIR"] = str(self.current_task_dir)
-
             # No pre-task cleanup needed - backup ensures clean restoration
 
             return True
@@ -157,9 +149,6 @@ class FilesystemStateManager(BaseStateManager):
                 logger.error("Test environment may be contaminated - consider manual reset")
                 cleanup_success = False
 
-            # Clear the resources list
-            self.created_resources.clear()
-
             return cleanup_success
 
         except Exception as e:
@@ -177,30 +166,8 @@ class FilesystemStateManager(BaseStateManager):
         return self.current_task_dir
 
     def get_service_config_for_agent(self) -> dict:
-        """
-        Get service-specific configuration for agent execution.
-
-        Returns:
-            Dictionary containing configuration needed by the agent/MCP server
-        """
-        service_config = {}
-
-        # Add test directory if available
-        if self.current_task_dir:
-            service_config["test_directory"] = str(self.current_task_dir)
-
-        return service_config
-
-    def track_resource(self, resource_path: Path):
-        """
-        Track a resource for cleanup.
-
-        Args:
-            resource_path: Path to the resource to track
-        """
-        if resource_path not in self.created_resources:
-            self.created_resources.append(resource_path)
-            logger.debug(f"Tracking resource for cleanup: {resource_path}")
+        """Get service-specific configuration for agent execution."""
+        return {"test_directory": str(self.current_task_dir)} if self.current_task_dir else {}
 
     def reset_test_environment(self) -> bool:
         """
@@ -313,59 +280,17 @@ class FilesystemStateManager(BaseStateManager):
     # =========================================================================
 
     def _create_initial_state(self, task: BaseTask) -> Optional[Dict[str, Any]]:
-        """Create initial state for a task.
+        """Create initial state for a task."""
+        return {"task_directory": str(self.current_task_dir)} if self.current_task_dir else None
 
-        For filesystem, this is handled in set_up() method by creating task directories.
-        Returns the task directory path as state info.
-        """
-        if self.current_task_dir and self.current_task_dir.exists():
-            return {"task_directory": str(self.current_task_dir)}
-        return None
-
-    def _store_initial_state_info(
-        self, task: BaseTask, state_info: Dict[str, Any]
-    ) -> None:
-        """Store initial state information in the task object.
-
-        For filesystem, we store the test directory path.
-        """
-        if state_info and "task_directory" in state_info:
-            if hasattr(task, "__dict__"):
-                task.test_directory = state_info["task_directory"]
+    def _store_initial_state_info(self, task: BaseTask, state_info: Dict[str, Any]) -> None:
+        """Store initial state information in the task object."""
+        pass  # Not needed with backup/restore approach
 
     def _cleanup_task_initial_state(self, task: BaseTask) -> bool:
-        """Clean up initial state for a specific task.
-
-        For filesystem, this means removing the task directory.
-        """
-        if hasattr(task, "test_directory") and task.test_directory:
-            task_dir = Path(task.test_directory)
-            if task_dir.exists():
-                try:
-                    shutil.rmtree(task_dir)
-                    logger.info(f"Cleaned up task directory: {task_dir}")
-                    return True
-                except Exception as e:
-                    logger.error(f"Failed to clean up task directory: {e}")
-                    return False
-        return True
+        """Clean up initial state for a specific task."""
+        return True  # Handled by backup/restore
 
     def _cleanup_single_resource(self, resource: Dict[str, Any]) -> bool:
-        """Clean up a single tracked resource.
-
-        For filesystem, resources are paths to files/directories.
-        """
-        if "path" in resource:
-            resource_path = Path(resource["path"])
-            if resource_path.exists():
-                try:
-                    if resource_path.is_dir():
-                        shutil.rmtree(resource_path)
-                    else:
-                        resource_path.unlink()
-                    logger.info(f"Cleaned up resource: {resource_path}")
-                    return True
-                except Exception as e:
-                    logger.error(f"Failed to clean up {resource_path}: {e}")
-                    return False
-        return True
+        """Clean up a single tracked resource."""
+        return True  # Handled by backup/restore
