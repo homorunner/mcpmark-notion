@@ -90,16 +90,20 @@ class GenericServiceFactory:
         """Create task manager instance."""
         return self.components.task_manager_class(**kwargs)
     
-    def create_state_manager(self, config: dict) -> BaseStateManager:
+    def create_state_manager(self, config) -> BaseStateManager:
         """Create state manager with config mapping."""
         mapping = self.components.config_mapping.get("state_manager", {})
-        kwargs = apply_config_mapping(config, mapping)
+        # Handle both dict and config schema objects
+        config_dict = config.get_all() if hasattr(config, 'get_all') else config
+        kwargs = apply_config_mapping(config_dict, mapping)
         return self.components.state_manager_class(**kwargs)
     
-    def create_login_helper(self, config: dict) -> BaseLoginHelper:
+    def create_login_helper(self, config) -> BaseLoginHelper:
         """Create login helper with config mapping."""
         mapping = self.components.config_mapping.get("login_helper", {})
-        kwargs = apply_config_mapping(config, mapping)
+        # Handle both dict and config schema objects
+        config_dict = config.get_all() if hasattr(config, 'get_all') else config
+        kwargs = apply_config_mapping(config_dict, mapping)
         return self.components.login_helper_class(**kwargs)
 
 

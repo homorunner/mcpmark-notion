@@ -1,0 +1,16 @@
+Task List and Reminders
+========================
+
+High Priority:
+- Complete project proposal
+- Review contract terms
+- Prepare presentation slides
+
+Medium Priority:
+- Update website content
+- Organize file system
+- Schedule team meeting
+
+Low Priority:
+- Clean desk area
+- Update contact list
