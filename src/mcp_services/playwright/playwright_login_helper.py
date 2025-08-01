@@ -1,121 +1,181 @@
 """
-Playwright Login Helper for MCPBench Evaluation Pipeline
-========================================================
+Playwright Login Helper for MCPBench
+====================================
 
-This module handles Playwright authentication and session management.
-Since Playwright is a web automation tool, "login" here refers to
-ensuring the MCP server is accessible and browser capabilities are available.
+This module provides browser session management and authentication utilities
+for Playwright-based web automation tasks. Handles browser context setup,
+session persistence, and state management.
 """
 
 from pathlib import Path
 from typing import Optional
+
+from playwright.sync_api import (
+    BrowserContext,
+    sync_playwright,
+    TimeoutError as PlaywrightTimeoutError,
+)
+
 from src.base.login_helper import BaseLoginHelper
 from src.logger import get_logger
 
 logger = get_logger(__name__)
 
-class PlaywrightLoginHelper(BaseLoginHelper):
-    """Handles Playwright MCP server authentication and session management."""
 
-    def __init__(self, browser: str = "chrome", headless: bool = True,
-                 state_path: Optional[Path] = None):
-        """Initialize Playwright login helper.
+class PlaywrightLoginHelper(BaseLoginHelper):
+    """
+    Login helper for Playwright web automation tasks.
+    
+    Manages browser contexts, session persistence, and authentication state
+    for web automation scenarios.
+    """
+
+    SUPPORTED_BROWSERS = {"chromium", "firefox"}
+
+    def __init__(
+        self,
+        *,
+        browser: str = "chromium",
+        headless: bool = True,
+        state_path: Optional[str | Path] = None,
+    ) -> None:
+        """
+        Initialize the Playwright login helper.
 
         Args:
-            browser: Browser to use (chrome, firefox, webkit)
-            headless: Run browser in headless mode
-            state_path: Path to store authentication state
+            browser: Browser engine to use ('chromium' or 'firefox')
+            headless: Whether to run browser in headless mode
+            state_path: Path to save browser session state
         """
-        super().__init__("playwright", state_path)
-        self.browser = browser
+        super().__init__()
+        
+        if browser not in self.SUPPORTED_BROWSERS:
+            raise ValueError(
+                f"Unsupported browser '{browser}'. Supported: {', '.join(self.SUPPORTED_BROWSERS)}"
+            )
+
+        self.browser_name = browser
         self.headless = headless
+        self.state_path = (
+            Path(state_path or Path.cwd() / "playwright_state.json").expanduser().resolve()
+        )
+        
+        # Browser management
+        self._playwright = None
+        self._browser = None
+        self._browser_context: Optional[BrowserContext] = None
+        
+        logger.info(f"Initialized PlaywrightLoginHelper with {browser} browser")
 
-    def login(self) -> bool:
-        """Perform Playwright authentication.
-
-        For Playwright MCP, this means verifying that:
-        1. The MCP server is accessible
-        2. Browser capabilities are available
-        3. Required browser is installed
+    def login(self, **kwargs) -> bool:
+        """
+        Set up browser context and session state.
+        
+        For most Playwright tasks, this creates a clean browser context
+        that can be used for web automation. More complex authentication
+        can be handled in specific implementations.
 
         Returns:
-            bool: True if authentication successful, False otherwise
+            bool: True if browser setup successful
         """
         try:
-            # Check if Playwright MCP server can be accessed
-            # This would typically involve checking if the npm package is available
-            # and if the browser binaries are installed
-
-            logger.info(f"Checking Playwright MCP availability for browser: {self.browser}")
-
-            # For now, we'll assume the MCP server is available
-            # In a real implementation, you might want to:
-            # 1. Check if playwright-mcp npm package is available
-            # 2. Verify browser installation
-            # 3. Test basic MCP server communication
-
-            self._update_login_state(True)
-            logger.info("Playwright MCP login successful")
+            # Clean up any existing browser instances
+            self.close()
+            
+            # Start Playwright
+            self._playwright = sync_playwright().start()
+            browser_type = getattr(self._playwright, self.browser_name)
+            self._browser = browser_type.launch(headless=self.headless)
+            
+            # Create browser context
+            context_options = {}
+            
+            # Load existing state if available
+            if self.state_path.exists():
+                try:
+                    context_options["storage_state"] = str(self.state_path)
+                    logger.info(f"Loaded browser state from {self.state_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to load browser state: {e}")
+            
+            self._browser_context = self._browser.new_context(**context_options)
+            
+            # Save current state
+            self._save_browser_state()
+            
+            logger.info("✅ Browser context setup successful")
             return True
-
+            
         except Exception as e:
-            logger.error(f"Playwright login failed: {e}")
-            self._update_login_state(False)
+            logger.error(f"Browser setup failed: {e}")
+            self.close()
             return False
 
-    def is_logged_in(self) -> bool:
-        """Check if currently logged in to Playwright MCP.
-
-        For Playwright, this means checking if the MCP server is accessible
-        and browser capabilities are available.
-
-        Returns:
-            bool: True if logged in, False otherwise
+    def get_browser_context(self) -> Optional[BrowserContext]:
         """
-        try:
-            # Check authentication state from file if available
-            if self.state_file.exists():
-                state = self._load_login_state()
-                return state.get("logged_in", False)
-
-            # If no state file, assume not logged in
-            return False
-
-        except Exception as e:
-            logger.error(f"Error checking Playwright login status: {e}")
-            return False
-
-    def logout(self) -> bool:
-        """Logout from Playwright MCP.
-
-        For Playwright, this means cleaning up any persistent state
-        and marking as logged out.
-
+        Get the current browser context.
+        
         Returns:
-            bool: True if logout successful, False otherwise
+            BrowserContext or None if not initialized
         """
-        try:
-            logger.info("Logging out from Playwright MCP")
+        return self._browser_context
 
-            # Clean up any persistent browser state if using persistent profile
-            # For isolated profiles, this is typically not needed
-
-            self._update_login_state(False)
-            logger.info("Playwright MCP logout successful")
-            return True
-
-        except Exception as e:
-            logger.error(f"Playwright logout failed: {e}")
-            return False
-
-    def get_browser_info(self) -> dict:
-        """Get current browser configuration information.
-
+    def is_authenticated(self) -> bool:
+        """
+        Check if browser context is ready for use.
+        
         Returns:
-            dict: Browser configuration details
+            bool: True if browser context is available
+        """
+        return self._browser_context is not None
+
+    def get_credentials(self) -> dict:
+        """
+        Get browser configuration for MCP integration.
+        
+        Returns:
+            dict: Browser configuration parameters
         """
         return {
-            "browser": self.browser,
+            "browser": self.browser_name,
             "headless": self.headless,
-            "service": "playwright"
+            "state_path": str(self.state_path)
         }
+
+    def _save_browser_state(self) -> None:
+        """Save current browser state to file."""
+        if self._browser_context:
+            try:
+                self._browser_context.storage_state(path=str(self.state_path))
+                logger.debug(f"Browser state saved to {self.state_path}")
+            except Exception as e:
+                logger.warning(f"Failed to save browser state: {e}")
+
+    def close(self) -> None:
+        """Clean up browser resources."""
+        if self._browser_context:
+            try:
+                # Save state before closing
+                self._save_browser_state()
+                self._browser_context.close()
+            except Exception as e:
+                logger.warning(f"Error closing browser context: {e}")
+            finally:
+                self._browser_context = None
+
+        if self._browser:
+            try:
+                self._browser.close()
+            except Exception as e:
+                logger.warning(f"Error closing browser: {e}")
+            finally:
+                self._browser = None
+
+        if self._playwright:
+            try:
+                self._playwright.stop()
+            except Exception as e:
+                logger.warning(f"Error stopping Playwright: {e}")
+            finally:
+                self._playwright = None
+

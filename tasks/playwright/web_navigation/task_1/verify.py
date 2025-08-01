@@ -461,7 +461,7 @@ def verify_task() -> bool:
         print(f"   Actually Successful: {navigation_data.get('navigation_success', False)}")
     
     else:
-        print(f"\n🎉 MCP agent successfully navigated with {MIN_ACCURACY_THRESHOLD*100}% accuracy in all categories!")
+        print(f"\n🎉 MCP agent successfully navigated with ≥{MIN_ACCURACY_THRESHOLD*100}% accuracy in all categories!")
     
     return overall_success
 
