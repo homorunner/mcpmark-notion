@@ -111,6 +111,10 @@ class FilesystemStateManager(BaseStateManager):
 
             logger.info(f"Using persistent test environment: {self.current_task_dir}")
 
+            # Set test directory on task object for use by task manager
+            if hasattr(task, 'test_directory'):
+                task.test_directory = str(self.current_task_dir)
+
             # No pre-task cleanup needed - backup ensures clean restoration
 
             return True

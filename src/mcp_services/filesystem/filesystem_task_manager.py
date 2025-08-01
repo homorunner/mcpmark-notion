@@ -49,11 +49,11 @@ class FilesystemTaskManager(BaseTaskManager):
         if hasattr(task, 'test_directory') and task.test_directory:
             test_dir = task.test_directory
         else:
-            test_dir = os.getenv('FILESYSTEM_TEST_DIR')
+            test_dir = os.getenv('FILESYSTEM_TEST_ROOT')
 
         if test_dir:
-            env['FILESYSTEM_TEST_DIR'] = test_dir
-            logger.debug(f"Setting FILESYSTEM_TEST_DIR to: {test_dir}")
+            env['FILESYSTEM_TEST_ROOT'] = test_dir
+            logger.debug(f"Setting FILESYSTEM_TEST_ROOT to: {test_dir}")
 
         return subprocess.run(
             self._get_verification_command(task),

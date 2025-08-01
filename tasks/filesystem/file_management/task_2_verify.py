@@ -4,13 +4,16 @@ Verification script for Filesystem Task 6: File Organization and Count
 """
 
 import sys
+import os
 from pathlib import Path
 import re
 
 def get_test_directory() -> Path:
-    """Get the test directory using relative path."""
-    script_dir = Path(__file__).parent
-    return script_dir / "../../../test_environments/desktop"
+    """Get the test directory from FILESYSTEM_TEST_ROOT env var."""
+    test_root = os.environ.get("FILESYSTEM_TEST_ROOT")
+    if not test_root:
+        raise ValueError("FILESYSTEM_TEST_ROOT environment variable is required")
+    return Path(test_root)
 
 def verify_task(test_dir: Path) -> bool:
     """Verify the task was completed correctly."""
