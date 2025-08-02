@@ -43,6 +43,8 @@ from src.logger import get_logger
 
 # Initialize logger
 logger = get_logger(__name__)
+import nest_asyncio
+nest_asyncio.apply()
 
 class MCPAgent:
     """
