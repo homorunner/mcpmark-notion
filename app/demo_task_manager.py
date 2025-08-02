@@ -40,6 +40,17 @@ class DemoTask:
         return (self.description_path.exists() and 
                 self.verify_path.exists() and 
                 self.meta_path.exists())
+    
+    def get_template_url(self) -> Optional[str]:
+        """Read and return the Notion template URL from meta.json."""
+        if self.meta_path.exists():
+            try:
+                with open(self.meta_path, 'r', encoding='utf-8') as f:
+                    meta_data = json.load(f)
+                return meta_data.get('ori_template_url')
+            except (json.JSONDecodeError, IOError):
+                return None
+        return None
 
 
 class DemoTaskManager:

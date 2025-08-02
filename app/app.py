@@ -154,21 +154,30 @@ def main():
                     st.markdown(task.get_description())
     
     with col2:
-        st.header("Evaluation Target")
+        # Display template URL if task is selected
+        if selected_task:
+            task = task_manager.get_task_by_name(selected_task)
+            if task:
+                template_url = task.get_template_url()
+                if template_url:
+                    st.header("Notion Template")
+                    st.markdown(f"**Template URL:** [{template_url}]({template_url})")
+                    st.info("""
+                    **Steps to proceed:**
+                    1. Click the template URL above to open it in Notion
+                    2. Duplicate the template to your workspace (must be connected to your API key)
+                    3. Copy the duplicated page's URL
+                    4. Extract the Page ID (last part after the page name, e.g., `1234567890abcdef`)
+                    5. Enter the Page ID below
+                    """)
+        
+        st.header("Notion Page ID")
         
         # Page ID input
         page_id = st.text_input(
-            "Notion Page ID",
-            placeholder="Enter the ID of the Notion page to evaluate",
-            help="The ID of the Notion page where the task should be performed"
+            "Enter the ID of the duplicated Notion page",
+            help="The ID from your duplicated Notion page URL (e.g., from https://notion.so/Page-Name-1234567890abcdef, use 1234567890abcdef)"
         )
-        
-        st.info("""
-        **How to get Page ID:**
-        1. Open the task Notion page in a browser
-        2. Copy the URL (e.g., https://www.notion.so/Page-Name-1234567890abcdef)
-        3. The Page ID is the last part: 1234567890abcdef
-        """)
     
     # Evaluation section
     st.header("Run Evaluation")
