@@ -72,11 +72,11 @@ class MCPEvaluator:
 
     def _get_task_output_dir(self, task) -> Path:
         """Return the directory path for storing this task's reports."""
-        # Replace underscores with hyphens inside the category name
-        category_slug = (
-            task.category.replace("_", "-") if task.category else "uncategorized"
-        )
-        task_slug = f"task-{task.task_id}"
+        # Replace underscores with hyphens so the directory name is filesystem-friendly.
+        category_slug = task.category.replace("_", "-") if task.category else "uncategorized"
+
+        # Use the task identifier as-is (numeric or slug) – no "task-" prefix.
+        task_slug = str(task.task_id)
 
         return self.base_experiment_dir / f"{category_slug}_{task_slug}"
 
@@ -129,15 +129,22 @@ class MCPEvaluator:
                 with meta_path.open("r", encoding="utf-8") as f:
                     meta_data = json.load(f)
 
-                # Extract category and task_id from directory name
-                # Format: category_task-N
-                dir_parts = task_dir.name.split("_task-")
-                if len(dir_parts) == 2:
-                    category = dir_parts[0].replace("-", "_")
-                    task_id = int(dir_parts[1])
-                else:
-                    category = "unknown"
-                    task_id = 0
+                # Ignore legacy directories containing "_task-".
+                # Only process the new format: <categorySlug>_<taskSlug>
+                # ----------------------------------------------------------
+
+                if "_task-" in task_dir.name:
+                    # skip legacy directory
+                    continue
+
+                if "_" not in task_dir.name:
+                    # malformed; skip
+                    continue
+
+                category_part, identifier_part = task_dir.name.split("_", 1)
+
+                category = category_part.replace("-", "_")
+                task_id = identifier_part  # keep slug as-is (string)
 
                 result = TaskResult(
                     task_name=meta_data["task_name"],
