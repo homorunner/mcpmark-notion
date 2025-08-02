@@ -11,5 +11,6 @@
     "database sync"
   ],
   "mcp": "notion",
-  "ori_template_url": "https://painted-tennis-ebc.notion.site/Japan-Travel-Planner-23181626b6d781c4b6bedb12786b5abe"
+  "ori_template_url": "https://painted-tennis-ebc.notion.site/Japan-Travel-Planner-23181626b6d781c4b6bedb12786b5abe",
+  "gt_page_url": "https://example.com/ground-truth-page"
 }
