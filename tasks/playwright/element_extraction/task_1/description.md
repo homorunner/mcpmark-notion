@@ -5,40 +5,37 @@ Use Playwright MCP tools to extract specific elements and data from a webpage.
 ## Requirements:
 
 1. Navigate to https://mcp-eval-website.vercel.app/extraction
-2. Extract all the main navigation links and their URLs:
-   - /forms (Form Interaction)
-   - /extraction (Element Extraction) 
-   - /downloads (File Downloads)
-   - /auth/basic (Basic Auth)
-   - /auth/form (Form Login)
-   - /auth/challenge (Challenge Auth)
-   - /navigation (Web Navigation)
-3. Find and extract the page headings:
-   - "MCPBench Test Environment"
-   - "HTTP Request & Response Service"
-   - "HTTP Methods"
-   - "HTTP Status Codes"
-4. Locate all HTTP method buttons (GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS)
-5. Extract all HTTP status code sections:
-   - 200 OK, 201 Created, 400 Bad Request, 401 Unauthorized, 404 Not Found, 500 Internal Server Error
-6. Extract JSON/code block examples from the page
-7. Generate a structured report of all extracted data
+2. Discover and extract all main navigation links from the page:
+   - Identify each navigation link's URL and display text
+   - Count the total number of navigation links found
+3. Find and extract all page headings (h1, h2, h3, h4, h5, h6):
+   - Capture the heading text content
+   - Note the heading level (h1, h2, etc.)
+4. Locate and identify all HTTP method elements on the page:
+   - Look for buttons, links, or text displaying HTTP methods
+   - Extract method names (e.g., GET, POST, PUT, DELETE, etc.)
+5. Find all HTTP status code references on the page:
+   - Extract status codes and their descriptions
+   - Look for both numeric codes and status text
+6. Extract any JSON or code block examples displayed on the page:
+   - Capture code snippets, JSON objects, or formatted code blocks
+   - Preserve formatting where possible
+7. Generate a comprehensive structured report of all extracted data
 
 ## Expected Outcomes:
 
-- Navigation links should be extracted with their URLs and labels
-- Page headings should be captured accurately
-- All 7 HTTP method buttons should be identified
-- All 6 status code sections should be extracted
-- JSON/code examples should be captured
-- Structured data report should be generated in JSON format
+- All navigation links are discovered and extracted with URLs and labels
+- Page headings are captured with their text and hierarchy level
+- HTTP method elements are identified and extracted
+- Status code sections are found and extracted
+- Code examples/JSON blocks are captured accurately
+- Structured data report is generated in organized format (JSON recommended)
 
 ## Success Criteria:
 
-- All 7 navigation elements are correctly identified with URLs
-- All 7 HTTP method buttons are extracted
-- All 6 status code sections are captured
-- Page headings match expected values
-- JSON/code blocks are properly extracted
-- No missing or duplicate elements in extraction
-- Structured output is well-formatted and complete
+- All discoverable navigation elements are correctly identified
+- All page headings are extracted without missing any
+- HTTP methods and status codes are comprehensively found
+- Code blocks are properly captured with formatting preserved
+- No duplicate elements in extraction results
+- Structured output is well-formatted, complete, and machine-readable
