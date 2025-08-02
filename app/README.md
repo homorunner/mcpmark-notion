@@ -21,7 +21,7 @@ This demo simplifies the full MCPBench pipeline to showcase the core evaluation 
 
 1. **Install dependencies**:
    ```bash
-   pip install -r requirements.txt
+   pip install streamlit>=1.28.0
    ```
 
 2. **Set up Notion**:
