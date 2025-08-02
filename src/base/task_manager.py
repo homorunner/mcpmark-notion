@@ -117,7 +117,7 @@ class BaseTaskManager(ABC):
         categories = self.get_categories()
         if task_filter in categories:
             return [task for task in all_tasks if task.category == task_filter]
-        
+
         # Check for specific task pattern (category/task_X)
         if "/" in task_filter:
             try:
@@ -303,48 +303,27 @@ class BaseTaskManager(ABC):
         
         Automatically handles both directory-based and file-based organization.
         """
-        task_files = []
-        organization = self.task_organization or self._get_task_organization()
-        
-        if organization == "directory":
-            # Notion-style: task_X/description.md
-            for task_dir in sorted(category_dir.iterdir()):
-                if not task_dir.is_dir() or not task_dir.name.startswith("task_"):
-                    continue
-                
-                task_id = self.extract_task_id(task_dir.name, r'task_(\d+)')
-                if task_id is None:
-                    continue
-                
-                desc_file = task_dir / "description.md"
-                verify_file = task_dir / "verify.py"
-                
-                if desc_file.exists() and verify_file.exists():
-                    task_files.append({
-                        'description': desc_file,
-                        'verification': verify_file,
-                        'task_id': task_id
-                    })
-        
-        elif organization == "file":
-            # GitHub/Filesystem style: task_X.md
-            for task_file in sorted(category_dir.glob("task_*.md")):
-                task_id = self.extract_task_id(task_file.name)
-                if task_id is None:
-                    continue
-                
-                # Look for corresponding verification script
-                verify_file = task_file.parent / f"task_{task_id}_verify.py"
-                if not verify_file.exists():
-                    logger.warning("No verification script found for task: %s", task_file)
-                    continue
-                
-                task_files.append({
-                    'description': task_file,
-                    'verification': verify_file,
-                    'task_id': task_id
-                })
-        
+        task_files: List[Dict[str, Any]] = []
+
+        for task_dir in category_dir.iterdir():
+            # Skip anything that is not a directory or is hidden
+            if not task_dir.is_dir() or task_dir.name.startswith("."):
+                continue
+
+            description_path = task_dir / "description.md"
+            verify_path = task_dir / "verify.py"
+
+            # We consider a directory a valid task only if the two mandatory files exist
+            if not (description_path.exists() and verify_path.exists()):
+                logger.warning("Skipping %s – missing description.md or verify.py", task_dir)
+                continue
+
+            task_files.append({
+                "task_name": task_dir.name,
+                "instruction_path": description_path,
+                "verification_path": verify_path,
+            })
+
         return task_files
     
     def _create_task_from_files(self, category_name: str, task_files_info: Dict[str, Any]) -> Optional[BaseTask]:

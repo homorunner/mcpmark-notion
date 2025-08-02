@@ -31,6 +31,20 @@ class GitHubTask(BaseTask):
     issue_number: Optional[int] = None
     expected_actions: Optional[List[str]] = None  # Expected GitHub actions to verify
 
+    # Directory-based task slug (e.g., "update_readme")
+    task_name: str = ""
+
+    @property
+    def name(self) -> str:
+        """Return the full task name.
+
+        When a human–readable slug (task_name) is available we prefer it, otherwise we
+        fall back to the legacy numeric style kept in `task_id`.
+        """
+        if self.task_name:
+            return f"{self.category}/{self.task_name}"
+        return f"{self.category}/task_{self.task_id}"
+
 
 class GitHubTaskManager(BaseTaskManager):
     """Manages task discovery, filtering, and verification for GitHub-based MCPBench evaluation."""
@@ -52,48 +66,18 @@ class GitHubTaskManager(BaseTaskManager):
     # =========================================================================
     # Service-specific implementations
     # =========================================================================
-
-    def _find_task_files(self, category_dir: Path) -> List[Dict[str, Any]]:
-        """Find task files in GitHub category directory.
-
-        GitHub tasks are organized as task_X.md files with task_X_verify.py scripts.
-        """
-        task_files = []
-
-        # Find all task files in this category
-        for task_file in category_dir.glob("task_*.md"):
-            task_id = self._extract_task_id(task_file.name)
-            if task_id is None:
-                continue
-
-            # Look for corresponding verification script
-            verify_file = task_file.parent / f"task_{task_id}_verify.py"
-            if not verify_file.exists():
-                logger.warning("No verification script found for task: %s", task_file)
-                continue
-
-            task_files.append({
-                "task_id": task_id,
-                "instruction_path": task_file,
-                "verification_path": verify_file
-            })
-
-        return task_files
-
-    def _extract_task_id(self, filename: str) -> Optional[int]:
-        """Extract task ID from filename like 'task_1.md'."""
-        import re
-        match = re.match(r'task_(\d+)\.md', filename)
-        return int(match.group(1)) if match else None
+    # No custom task discovery methods needed; relying entirely on BaseTaskManager defaults.
 
     def _create_task_from_files(self, category_name: str, task_files_info: Dict[str, Any]) -> Optional[GitHubTask]:
-        """Create a GitHubTask from file information."""
+        """Instantiate a GitHubTask from the dictionary yielded by _find_task_files."""
+
         return GitHubTask(
             task_instruction_path=task_files_info["instruction_path"],
             task_verification_path=task_files_info["verification_path"],
             service="github",
             category=category_name,
-            task_id=task_files_info["task_id"]
+            task_id=task_files_info["task_name"],  # keep compatibility with BaseTask
+            task_name=task_files_info["task_name"],
         )
 
     def _get_verification_command(self, task: GitHubTask) -> List[str]:
