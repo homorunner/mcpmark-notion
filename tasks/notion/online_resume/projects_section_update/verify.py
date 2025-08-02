@@ -102,7 +102,7 @@ def verify(notion: Client, main_id: str = None) -> bool:
                 return 
             
             # Check url
-            url_prop = properties.get("URL", {}).get("url", [])
+            url_prop = properties.get("Url", {}).get("url", [])
             if not url_prop or url_prop != "www.zinenwine.com":
                 print("Failure: Zapier project url is incorrect.", file=sys.stderr)
                 return 
