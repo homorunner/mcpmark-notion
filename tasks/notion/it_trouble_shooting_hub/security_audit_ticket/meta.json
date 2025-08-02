@@ -1,0 +1,10 @@
+{
+  "task_name": "security_audit_ticket",
+  "author": "zijian",
+  "category": "it_trouble_shooting_hub",
+  "created_at": "2025-07-27",
+  "difficulty": "random",
+  "tags": ["security", "audit", "inventory", "ticket"],
+  "mcp": "notion",
+  "ori_template_url": ""
+}

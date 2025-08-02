@@ -1,0 +1,10 @@
+{
+  "task_name": "restaurant_expenses_sync",
+  "author": "xiangyan",
+  "category": "japan_travel_planner",
+  "created_at": "2025-07-27",
+  "difficulty": "random",
+  "tags": ["travel", "expenses", "dining", "database sync"],
+  "mcp": "notion",
+  "ori_template_url": ""
+}

@@ -1,0 +1,10 @@
+{
+  "task_name": "asset_retirement_migration",
+  "author": "zijian",
+  "category": "it_trouble_shooting_hub",
+  "created_at": "2025-07-27",
+  "difficulty": "random",
+  "tags": ["asset management", "database migration", "archiving", "retirement"],
+  "mcp": "notion",
+  "ori_template_url": ""
+}
