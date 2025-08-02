@@ -28,7 +28,7 @@ class TaskResult:
         success: Whether the task completed successfully.
         execution_time: Time taken to execute the task in seconds.
         category: The task category.
-        task_id: The task identifier number.
+        task_id: The task identifier (number or slug).
         error_message: Error message if the task failed.
         model_output: Agent conversation trajectory (messages).
     """
@@ -37,7 +37,7 @@ class TaskResult:
     success: bool
     execution_time: float  # in seconds
     category: Optional[str] = None
-    task_id: Optional[int] = None
+    task_id: Optional[str] = None
     error_message: Optional[str] = None
     model_output: Optional[Any] = None  # Agent conversation trajectory
     token_usage: Optional[Dict[str, int]] = None  # Token usage statistics

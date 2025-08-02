@@ -29,7 +29,7 @@ class BaseTask:
     task_verification_path: Path
     service: str
     category: str
-    task_id: int
+    task_id: str
     
     @property
     def name(self) -> str:
@@ -96,7 +96,8 @@ class BaseTaskManager(ABC):
                     logger.debug("Found task: %s", task.name)
         
         # Sort and cache
-        self._tasks_cache = sorted(tasks, key=lambda t: (t.category, t.task_id))
+        # Sort by category and a stringified task_id to handle both numeric IDs and slugs uniformly
+        self._tasks_cache = sorted(tasks, key=lambda t: (t.category, str(t.task_id)))
         logger.info("Discovered %d %s tasks across all categories", len(self._tasks_cache), self.service.title())
         return self._tasks_cache
     
