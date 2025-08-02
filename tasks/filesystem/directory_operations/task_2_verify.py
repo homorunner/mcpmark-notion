@@ -1,89 +1,79 @@
 #!/usr/bin/env python3
 """
-Verification script for Filesystem Task 4: File Metadata Collection
+Verification script for Filesystem Task 4: Directory Analysis
 """
 
-import os
 import sys
+import os
 from pathlib import Path
+import re
 
 def get_test_directory() -> Path:
-    """Get the test directory from environment variable."""
-    test_dir = os.getenv("FILESYSTEM_TEST_DIR")
-    if not test_dir:
-        print("❌ FILESYSTEM_TEST_DIR environment variable not set")
-        sys.exit(1)
-    return Path(test_dir)
+    """Get the test directory from FILESYSTEM_TEST_ROOT env var."""
+    test_root = os.environ.get("FILESYSTEM_TEST_ROOT")
+    if not test_root:
+        raise ValueError("FILESYSTEM_TEST_ROOT environment variable is required")
+    return Path(test_root)
 
-def verify_metadata_collection(test_dir: Path) -> bool:
-    """Verify the metadata collection task."""
-    all_passed = True
+def verify_task(test_dir: Path) -> bool:
+    """Verify the task was completed correctly."""
+    report_file = test_dir / "directory_report.txt"
     
-    # Check report file exists
-    report_file = test_dir / "file_report.txt"
     if not report_file.exists():
-        print("❌ File 'file_report.txt' not found")
+        print("❌ File 'directory_report.txt' not found")
         return False
     
-    print("✅ File 'file_report.txt' exists")
-    
-    # Read report content
     try:
         content = report_file.read_text()
-        print("\n📄 Report content:")
-        print(content)
         
-        # Check if report mentions files and directories
-        has_file_info = "file" in content.lower()
-        has_dir_info = "director" in content.lower()
+        # Check required sections
+        required = [
+            "Directory Analysis Report",
+            "Generated:",
+            "Summary:",
+            "Total files:",
+            "Total directories:",
+            "Text files in root:",
+            "Root directory .txt files:",
+            "Analysis complete"
+        ]
         
-        if has_file_info:
-            print("✅ Report mentions files")
-        else:
-            print("❌ Report doesn't mention files")
-            all_passed = False
-            
-        if has_dir_info:
-            print("✅ Report mentions directories")
-        else:
-            print("⚠️  Report doesn't mention directories (may be okay if none exist)")
+        for pattern in required:
+            if pattern not in content:
+                print(f"❌ Missing section: '{pattern}'")
+                return False
         
-        # Check for count/summary
-        has_numbers = any(char.isdigit() for char in content)
-        if has_numbers:
-            print("✅ Report contains numbers (likely counts)")
-        else:
-            print("❌ Report doesn't contain any numbers")
-            all_passed = False
+        # Check date format
+        if not re.search(r'Generated: \d{4}-\d{2}-\d{2}', content):
+            print("❌ Missing or incorrect date format")
+            return False
+        
+        # Check file counts exist
+        if not re.search(r'Total files:\s*\d+', content):
+            print("❌ Missing file count")
+            return False
             
-        # Check minimum content length
-        if len(content.strip()) < 20:
-            print("❌ Report seems too short")
-            all_passed = False
-        else:
-            print("✅ Report has reasonable length")
-            
+        if not re.search(r'Total directories:\s*\d+', content):
+            print("❌ Missing directory count")
+            return False
+        
+        print("✅ Directory analysis report created correctly")
+        return True
+        
     except Exception as e:
-        print(f"❌ Error reading report file: {e}")
+        print(f"❌ Error reading report: {e}")
         return False
-    
-    return all_passed
 
 def main():
     """Main verification function."""
-    print("🔍 Verifying Filesystem Task 4: File Metadata Collection")
-    print("=" * 50)
-    
     test_dir = get_test_directory()
-    print(f"📁 Test directory: {test_dir}\n")
     
-    if not verify_metadata_collection(test_dir):
-        print("\n❌ Task 4 verification: FAIL")
+    if verify_task(test_dir):
+        print("🎉 Task 4 verification: PASS")
+        sys.exit(0)
+    else:
+        print("❌ Task 4 verification: FAIL")
         sys.exit(1)
-    
-    print("\n🎉 Task 4 verification: PASS")
-    print("Metadata collection completed successfully")
-    sys.exit(0)
 
 if __name__ == "__main__":
     main()

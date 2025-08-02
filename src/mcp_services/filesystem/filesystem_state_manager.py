@@ -8,7 +8,6 @@ It manages test directories, file creation/cleanup, and environment isolation.
 
 import os
 import shutil
-import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -27,46 +26,54 @@ class FilesystemStateManager(BaseStateManager):
     and cleaning up after task completion.
     """
 
-    def __init__(
-        self,
-        test_root: Optional[Path] = None,
-        cleanup_on_exit: bool = True
-    ):
+    def __init__(self, test_root: Optional[Path] = None, cleanup_on_exit: bool = False):
         """
         Initialize filesystem state manager.
 
         Args:
             test_root: Root directory for test operations (from FILESYSTEM_TEST_ROOT env var)
-            cleanup_on_exit: Whether to clean up test directories after tasks
+            cleanup_on_exit: Whether to clean up test directories after tasks (default False for persistent environment)
         """
         super().__init__(service_name="filesystem")
 
-        # Use provided test root or create in temp directory
+        # Use provided test root or default to persistent test environment
         if test_root:
             self.test_root = Path(test_root)
         else:
-            # Default to a subdirectory in the system temp directory
-            self.test_root = Path(tempfile.gettempdir()) / "mcpbench_filesystem_tests"
+            # Default to persistent test environment using relative path
+            script_dir = Path(__file__).parent
+            self.test_root = script_dir / "../../../test_environments/desktop"
 
         self.cleanup_on_exit = cleanup_on_exit
         self.current_task_dir: Optional[Path] = None
-        self.created_resources: List[Path] = []
+        
+        # Backup and restore functionality
+        self.backup_dir: Optional[Path] = None
+        self.backup_enabled = True  # Enable backup/restore by default for task isolation
 
-        logger.info(f"Initialized FilesystemStateManager with test root: {self.test_root}")
+        logger.info(
+            f"Initialized FilesystemStateManager with persistent test environment: {self.test_root}"
+        )
 
     def initialize(self, **kwargs) -> bool:
         """
         Initialize the filesystem environment.
 
-        Creates the test root directory if it doesn't exist.
+        Ensures the persistent test environment exists and is accessible.
 
         Returns:
             bool: True if initialization successful
         """
         try:
-            # Create test root directory if it doesn't exist
-            self.test_root.mkdir(parents=True, exist_ok=True)
-            logger.info(f"Test root directory ready: {self.test_root}")
+            # Ensure test environment directory exists
+            if not self.test_root.exists():
+                logger.error(f"Persistent test environment not found: {self.test_root}")
+                logger.error(
+                    "Please ensure test_environments/desktop/ exists in the repository"
+                )
+                return False
+
+            logger.info(f"Using persistent test environment: {self.test_root}")
 
             # Verify we can write to the directory
             test_file = self.test_root / ".mcpbench_test"
@@ -83,7 +90,8 @@ class FilesystemStateManager(BaseStateManager):
         """
         Set up filesystem environment for a specific task.
 
-        Creates an isolated directory for the task to operate in.
+        Creates a backup of the current environment, then uses the persistent
+        test environment as the working directory.
 
         Args:
             task: The task for which to set up the state
@@ -92,29 +100,22 @@ class FilesystemStateManager(BaseStateManager):
             bool: True if setup successful
         """
         try:
-            # Create a unique directory for this task
-            task_dir_name = f"{task.service}_{task.category}_{task.task_id}_{os.getpid()}"
-            self.current_task_dir = self.test_root / task_dir_name
+            # Create backup of current test environment before task execution
+            if self.backup_enabled:
+                if not self._create_backup(task):
+                    logger.error(f"Failed to create backup for task {task.name}")
+                    return False
 
-            # Clean up if directory already exists (from previous run)
-            if self.current_task_dir.exists():
-                shutil.rmtree(self.current_task_dir)
+            # Use the persistent test environment directly
+            self.current_task_dir = self.test_root
 
-            # Create fresh task directory
-            self.current_task_dir.mkdir(parents=True)
-            self.created_resources.append(self.current_task_dir)
+            logger.info(f"Using persistent test environment: {self.current_task_dir}")
 
-            logger.info(f"Created task directory: {self.current_task_dir}")
-
-            # Store the test directory path in the task object for use by task manager
-            if hasattr(task, '__dict__'):
+            # Set test directory on task object for use by task manager
+            if hasattr(task, 'test_directory'):
                 task.test_directory = str(self.current_task_dir)
 
-            # Set environment variable for verification scripts and MCP server
-            os.environ["FILESYSTEM_TEST_DIR"] = str(self.current_task_dir)
-
-            # Create category-specific initial state
-            self._setup_category_files(task.category)
+            # No pre-task cleanup needed - backup ensures clean restoration
 
             return True
 
@@ -126,6 +127,8 @@ class FilesystemStateManager(BaseStateManager):
         """
         Clean up filesystem resources created during task execution.
 
+        Restores the test environment from backup to ensure task isolation.
+
         Args:
             task: The task to clean up after (optional)
             **kwargs: Additional cleanup options
@@ -133,38 +136,22 @@ class FilesystemStateManager(BaseStateManager):
         Returns:
             bool: True if cleanup successful
         """
-        if not self.cleanup_on_exit:
-            logger.info("Cleanup disabled, keeping test directories")
-            return True
-
         try:
             cleanup_success = True
 
-            # Clean up current task directory if it exists
-            if self.current_task_dir and self.current_task_dir.exists():
-                try:
-                    shutil.rmtree(self.current_task_dir)
-                    logger.info(f"Cleaned up task directory: {self.current_task_dir}")
-                except Exception as e:
-                    logger.error(f"Failed to clean up task directory: {e}")
+            # Restore from backup - this is the only reliable way to ensure isolation
+            if self.backup_enabled and self.backup_dir and self.backup_dir.exists():
+                if not self._restore_from_backup(task):
+                    logger.error(f"Failed to restore from backup for task {task.name if task else 'unknown'}")
                     cleanup_success = False
-
-            # Clean up any other tracked resources
-            for resource in self.created_resources:
-                if resource.exists():
-                    try:
-                        if resource.is_dir():
-                            shutil.rmtree(resource)
-                        else:
-                            resource.unlink()
-                        logger.info(f"Cleaned up resource: {resource}")
-                    except Exception as e:
-                        logger.error(f"Failed to clean up {resource}: {e}")
-                        cleanup_success = False
-
-            # Clear the resources list
-            self.created_resources.clear()
-            self.current_task_dir = None
+                else:
+                    logger.info("✅ Test environment restored from backup for task isolation")
+            else:
+                # No backup available - cannot guarantee proper isolation
+                task_name = task.name if task else "unknown"
+                logger.error(f"No backup available for task {task_name} - cannot ensure proper isolation")
+                logger.error("Test environment may be contaminated - consider manual reset")
+                cleanup_success = False
 
             return cleanup_success
 
@@ -172,55 +159,6 @@ class FilesystemStateManager(BaseStateManager):
             logger.error(f"Filesystem cleanup failed: {e}")
             return False
 
-    def _setup_category_files(self, category: str) -> None:
-        """Setup category-specific files and directories."""
-        setup_configs = {
-            "basic_operations": self._setup_basic_operations,
-            "directory_operations": self._setup_directory_operations,
-            "file_management": self._setup_file_management,
-        }
-
-        setup_func = setup_configs.get(category)
-        if setup_func:
-            setup_func()
-        else:
-            logger.debug(f"No specific setup for category: {category}")
-
-    def _setup_basic_operations(self) -> None:
-        """Setup files for basic operations category."""
-        sample_file = self.current_task_dir / "sample.txt"
-        sample_file.write_text("This is a sample file for testing.")
-        logger.info(f"Created sample file: {sample_file}")
-
-    def _setup_directory_operations(self) -> None:
-        """Setup directories for directory operations category."""
-        nested_dir = self.current_task_dir / "level1" / "level2"
-        nested_dir.mkdir(parents=True)
-        (nested_dir / "nested_file.txt").write_text("Nested content")
-        logger.info("Created nested directory structure")
-
-    def _setup_file_management(self) -> None:
-        """Setup various files for file management category."""
-        files_to_create = [
-            # Files with "test" in content
-            ("experiment.txt", "This is a test experiment file."),
-            ("data/test_results.txt", "Test results from the latest run."),
-
-            # Files with "sample" in content
-            ("example.txt", "This is a sample document."),
-            ("docs/sample_data.txt", "Sample data for analysis."),
-
-            # Files with neither test nor sample
-            ("readme.txt", "Project documentation goes here."),
-            ("notes.txt", "Important notes about the project."),
-        ]
-
-        for file_path, content in files_to_create:
-            full_path = self.current_task_dir / file_path
-            full_path.parent.mkdir(parents=True, exist_ok=True)
-            full_path.write_text(content)
-
-        logger.info("Created various txt files for organization task")
 
     def get_test_directory(self) -> Optional[Path]:
         """
@@ -232,107 +170,131 @@ class FilesystemStateManager(BaseStateManager):
         return self.current_task_dir
 
     def get_service_config_for_agent(self) -> dict:
+        """Get service-specific configuration for agent execution."""
+        return {"test_directory": str(self.current_task_dir)} if self.current_task_dir else {}
+
+    def reset_test_environment(self) -> bool:
         """
-        Get service-specific configuration for agent execution.
+        Reset the test environment to its original state.
+
+        This method can be used for development/debugging purposes.
+        In normal operation, the persistent environment is maintained.
 
         Returns:
-            Dictionary containing configuration needed by the agent/MCP server
+            bool: True if reset successful
         """
-        service_config = {}
-
-        # Add test directory if available
-        if self.current_task_dir:
-            service_config["test_directory"] = str(self.current_task_dir)
-
-        return service_config
-
-    def track_resource(self, resource_path: Path):
-        """
-        Track a resource for cleanup.
-
-        Args:
-            resource_path: Path to the resource to track
-        """
-        if resource_path not in self.created_resources:
-            self.created_resources.append(resource_path)
-            logger.debug(f"Tracking resource for cleanup: {resource_path}")
-
-    def force_cleanup_all(self) -> bool:
-        """
-        Force cleanup of all test directories in the test root.
-
-        Returns:
-            bool: True if cleanup successful
-        """
-        if not self.test_root.exists():
-            return True
-
         try:
-            for item in self.test_root.iterdir():
-                if item.is_dir() and item.name.startswith("filesystem_"):
-                    shutil.rmtree(item)
-                    logger.info(f"Force cleaned up: {item}")
+            # Remove any sorting directories that might have been created
+            sorting_dirs = ["has_test", "no_test", "organized", "backup"]
+            for dir_name in sorting_dirs:
+                dir_path = self.test_root / dir_name
+                if dir_path.exists():
+                    shutil.rmtree(dir_path)
+                    logger.info(f"Removed sorting directory: {dir_path}")
+
+            # Remove any temporary files that might have been created
+            temp_files = ["hello_world.txt", "new_file.txt", "temp.txt"]
+            for file_name in temp_files:
+                file_path = self.test_root / file_name
+                if file_path.exists():
+                    file_path.unlink()
+                    logger.info(f"Removed temporary file: {file_path}")
+
+            logger.info("Test environment reset completed")
             return True
         except Exception as e:
-            logger.error(f"Force cleanup failed: {e}")
+            logger.error(f"Test environment reset failed: {e}")
             return False
+
+    # =========================================================================
+    # Backup and Restore Methods for Task Isolation
+    # =========================================================================
+
+    def _create_backup(self, task: BaseTask) -> bool:
+        """
+        Create a complete backup of the test environment before task execution.
+
+        Args:
+            task: The task for which to create backup
+
+        Returns:
+            bool: True if backup successful
+        """
+        try:
+            # Create backup directory with task-specific name
+            script_dir = Path(__file__).parent
+            backup_root = script_dir / "../../../.mcpbench_backups"
+            backup_root.mkdir(exist_ok=True)
+            
+            task_id = f"{task.service}_{task.category}_{task.task_id}"
+            self.backup_dir = backup_root / f"backup_{task_id}_{os.getpid()}"
+            
+            # Remove existing backup if it exists
+            if self.backup_dir.exists():
+                shutil.rmtree(self.backup_dir)
+            
+            # Create fresh backup by copying entire test environment
+            shutil.copytree(self.test_root, self.backup_dir)
+            
+            logger.info(f"✅ Created backup for task {task.name}: {self.backup_dir}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to create backup for task {task.name}: {e}")
+            return False
+
+    def _restore_from_backup(self, task: Optional[BaseTask] = None) -> bool:
+        """
+        Restore the test environment from backup.
+
+        Args:
+            task: The task to restore after (optional, for logging)
+
+        Returns:
+            bool: True if restore successful
+        """
+        try:
+            if not self.backup_dir or not self.backup_dir.exists():
+                logger.error("No backup directory available for restore")
+                return False
+
+            # Remove current test environment
+            if self.test_root.exists():
+                shutil.rmtree(self.test_root)
+
+            # Restore from backup
+            shutil.copytree(self.backup_dir, self.test_root)
+            
+            # Clean up backup directory
+            shutil.rmtree(self.backup_dir)
+            self.backup_dir = None
+            
+            task_name = task.name if task else "unknown"
+            logger.info(f"✅ Restored test environment from backup after task {task_name}")
+            return True
+            
+        except Exception as e:
+            task_name = task.name if task else "unknown"
+            logger.error(f"Failed to restore from backup after task {task_name}: {e}")
+            return False
+
 
     # =========================================================================
     # Abstract Method Implementations Required by BaseStateManager
     # =========================================================================
 
     def _create_initial_state(self, task: BaseTask) -> Optional[Dict[str, Any]]:
-        """Create initial state for a task.
-
-        For filesystem, this is handled in set_up() method by creating task directories.
-        Returns the task directory path as state info.
-        """
-        if self.current_task_dir and self.current_task_dir.exists():
-            return {"task_directory": str(self.current_task_dir)}
-        return None
+        """Create initial state for a task."""
+        return {"task_directory": str(self.current_task_dir)} if self.current_task_dir else None
 
     def _store_initial_state_info(self, task: BaseTask, state_info: Dict[str, Any]) -> None:
-        """Store initial state information in the task object.
-
-        For filesystem, we store the test directory path.
-        """
-        if state_info and "task_directory" in state_info:
-            if hasattr(task, '__dict__'):
-                task.test_directory = state_info["task_directory"]
+        """Store initial state information in the task object."""
+        pass  # Not needed with backup/restore approach
 
     def _cleanup_task_initial_state(self, task: BaseTask) -> bool:
-        """Clean up initial state for a specific task.
-
-        For filesystem, this means removing the task directory.
-        """
-        if hasattr(task, 'test_directory') and task.test_directory:
-            task_dir = Path(task.test_directory)
-            if task_dir.exists():
-                try:
-                    shutil.rmtree(task_dir)
-                    logger.info(f"Cleaned up task directory: {task_dir}")
-                    return True
-                except Exception as e:
-                    logger.error(f"Failed to clean up task directory: {e}")
-                    return False
-        return True
+        """Clean up initial state for a specific task."""
+        return True  # Handled by backup/restore
 
     def _cleanup_single_resource(self, resource: Dict[str, Any]) -> bool:
-        """Clean up a single tracked resource.
-
-        For filesystem, resources are paths to files/directories.
-        """
-        if "path" in resource:
-            resource_path = Path(resource["path"])
-            if resource_path.exists():
-                try:
-                    if resource_path.is_dir():
-                        shutil.rmtree(resource_path)
-                    else:
-                        resource_path.unlink()
-                    logger.info(f"Cleaned up resource: {resource_path}")
-                    return True
-                except Exception as e:
-                    logger.error(f"Failed to clean up {resource_path}: {e}")
-                    return False
-        return True
+        """Clean up a single tracked resource."""
+        return True  # Handled by backup/restore
