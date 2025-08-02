@@ -432,17 +432,7 @@ class MCPAgent:
             Dictionary containing execution results
         """
         try:
-            # Check if we're already in an event loop
-            try:
-                loop = asyncio.get_running_loop()
-                # If we're in an event loop, create a new task in a separate thread
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    future = executor.submit(asyncio.run, self.execute(instruction))
-                    return future.result()
-            except RuntimeError:
-                # No event loop running, safe to use asyncio.run
-                return asyncio.run(self.execute(instruction))
+            return asyncio.run(self.execute(instruction))
         except asyncio.TimeoutError:
             self._usage_stats["failed_executions"] += 1
             return {
