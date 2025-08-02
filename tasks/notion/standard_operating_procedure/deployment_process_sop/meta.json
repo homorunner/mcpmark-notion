@@ -4,7 +4,12 @@
   "category": "standard_operating_procedure",
   "created_at": "2025-07-27",
   "difficulty": "random",
-  "tags": ["sop", "deployment", "documentation", "process"],
+  "tags": [
+    "sop",
+    "deployment",
+    "documentation",
+    "process"
+  ],
   "mcp": "notion",
-  "ori_template_url": ""
+  "ori_template_url": "https://painted-tennis-ebc.notion.site/Standard-Operating-Procedure-24381626b6d780a8b678f9e62ae5b152"
 }

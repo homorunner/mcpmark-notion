@@ -4,7 +4,12 @@
   "category": "japan_travel_planner",
   "created_at": "2025-07-27",
   "difficulty": "random",
-  "tags": ["travel", "expenses", "dining", "database sync"],
+  "tags": [
+    "travel",
+    "expenses",
+    "dining",
+    "database sync"
+  ],
   "mcp": "notion",
-  "ori_template_url": ""
+  "ori_template_url": "https://painted-tennis-ebc.notion.site/Japan-Travel-Planner-23181626b6d781c4b6bedb12786b5abe"
 }
