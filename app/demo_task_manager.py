@@ -9,6 +9,7 @@ and verification execution without the complexity of automatic discovery.
 import subprocess
 import sys
 import os
+import json
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -16,16 +17,17 @@ from typing import Dict, List, Optional, Tuple
 class DemoTask:
     """Represents a single evaluation task."""
     
-    def __init__(self, category: str, task_id: int, base_path: Path):
+    def __init__(self, category: str, task_name: str, base_path: Path):
         self.category = category
-        self.task_id = task_id
-        self.name = f"{category}/task_{task_id}"
+        self.task_name = task_name
+        self.name = f"{category}/{task_name}"
         self.base_path = base_path
         
         # Paths to task files
-        self.task_dir = base_path / "tasks" / "notion" / category / f"task_{task_id}"
+        self.task_dir = base_path / "tasks" / "notion" / category / task_name
         self.description_path = self.task_dir / "description.md"
         self.verify_path = self.task_dir / "verify.py"
+        self.meta_path = self.task_dir / "meta.json"
     
     def get_description(self) -> str:
         """Read and return the task description."""
@@ -35,7 +37,9 @@ class DemoTask:
     
     def exists(self) -> bool:
         """Check if task files exist."""
-        return self.description_path.exists() and self.verify_path.exists()
+        return (self.description_path.exists() and 
+                self.verify_path.exists() and 
+                self.meta_path.exists())
 
 
 class DemoTaskManager:
@@ -49,41 +53,74 @@ class DemoTaskManager:
         self.base_path = base_path
     
     def get_available_tasks(self) -> List[Dict[str, str]]:
-        """Get a list of available tasks for the UI."""
-        # Hardcode some common tasks for demo
-        tasks = [
-            {"value": "habit_tracker/task_1", "label": "Habit Tracker - Add habit and mark days"},
-            {"value": "habit_tracker/task_2", "label": "Habit Tracker - Mark specific days"},
-            {"value": "job_applications/task_1", "label": "Job Applications - Add Google application"},
-            {"value": "team_projects/task_1", "label": "Team Projects - Update project status"},
-            {"value": "online_resume/task_1", "label": "Online Resume - Add work experience"},
-        ]
+        """Get a list of available tasks for the UI by parsing tasks/notion directory."""
+        tasks = []
+        notion_tasks_dir = self.base_path / "tasks" / "notion"
         
-        # Filter to only include tasks that actually exist
-        existing_tasks = []
-        for task_info in tasks:
-            category, task_part = task_info["value"].split("/")
-            task_id = int(task_part.split("_")[1])
-            task = self.get_task(category, task_id)
-            if task and task.exists():
-                existing_tasks.append(task_info)
+        if not notion_tasks_dir.exists():
+            return tasks
+            
+        # Iterate through each category directory
+        for category_dir in notion_tasks_dir.iterdir():
+            if not category_dir.is_dir():
+                continue
+                
+            category_name = category_dir.name
+            
+            # Iterate through each task directory in the category
+            for task_dir in category_dir.iterdir():
+                if not task_dir.is_dir():
+                    continue
+                    
+                task_name = task_dir.name
+                meta_file = task_dir / "meta.json"
+                description_file = task_dir / "description.md"
+                verify_file = task_dir / "verify.py"
+                
+                # Only include tasks that have all required files
+                if meta_file.exists() and description_file.exists() and verify_file.exists():
+                    try:
+                        # Read meta.json to get task information
+                        with open(meta_file, 'r', encoding='utf-8') as f:
+                            meta_data = json.load(f)
+                        
+                        # Create a readable label from category and task name
+                        category_label = category_name.replace('_', ' ').title()
+                        task_label = task_name.replace('_', ' ').title()
+                        
+                        # Check if meta has tags for better description
+                        if 'tags' in meta_data and meta_data['tags']:
+                            tag_desc = ', '.join(meta_data['tags'][:2])  # Use first 2 tags
+                            label = f"{category_label} - {task_label} ({tag_desc})"
+                        else:
+                            label = f"{category_label} - {task_label}"
+                        
+                        tasks.append({
+                            "value": f"{category_name}/{task_name}",
+                            "label": label
+                        })
+                        
+                    except (json.JSONDecodeError, KeyError, IOError):
+                        # Skip tasks with invalid meta.json
+                        continue
         
-        return existing_tasks
+        # Sort tasks by category and then by task name for consistent ordering
+        tasks.sort(key=lambda x: x["value"])
+        return tasks
     
-    def get_task(self, category: str, task_id: int) -> Optional[DemoTask]:
+    def get_task(self, category: str, task_name: str) -> Optional[DemoTask]:
         """Get a specific task."""
-        task = DemoTask(category, task_id, self.base_path)
+        task = DemoTask(category, task_name, self.base_path)
         if task.exists():
             return task
         return None
     
-    def get_task_by_name(self, task_name: str) -> Optional[DemoTask]:
-        """Get a task by its full name (e.g., 'habit_tracker/task_1')."""
+    def get_task_by_name(self, full_task_name: str) -> Optional[DemoTask]:
+        """Get a task by its full name (e.g., 'online_resume/work_history_addition')."""
         try:
-            category, task_part = task_name.split("/")
-            task_id = int(task_part.split("_")[1])
-            return self.get_task(category, task_id)
-        except (ValueError, IndexError):
+            category, task_name = full_task_name.split("/", 1)
+            return self.get_task(category, task_name)
+        except ValueError:
             return None
     
     def run_verification(self, task: DemoTask, page_id: str, notion_api_key: str = None) -> Tuple[bool, str]:

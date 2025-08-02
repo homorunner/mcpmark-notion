@@ -71,7 +71,7 @@ def main():
     
     # Sidebar for configuration
     with st.sidebar:
-        st.header("⚙️ Configuration")
+        st.header("Configuration")
         
         # Model selection with provider grouping
         model_display_info = DemoModelConfig.get_display_info()
@@ -129,7 +129,7 @@ def main():
     col1, col2 = st.columns([1, 1])
     
     with col1:
-        st.header("📝 Task Selection")
+        st.header("Task Selection")
         
         # Get available tasks
         available_tasks = task_manager.get_available_tasks()
@@ -154,7 +154,7 @@ def main():
                     st.markdown(task.get_description())
     
     with col2:
-        st.header("🎯 Evaluation Target")
+        st.header("Evaluation Target")
         
         # Page ID input
         page_id = st.text_input(
@@ -165,13 +165,13 @@ def main():
         
         st.info("""
         **How to get Page ID:**
-        1. Open your Notion page in a browser
+        1. Open the task Notion page in a browser
         2. Copy the URL (e.g., https://www.notion.so/Page-Name-1234567890abcdef)
         3. The Page ID is the last part: 1234567890abcdef
         """)
     
     # Evaluation section
-    st.header("🚀 Run Evaluation")
+    st.header("Run Evaluation")
     
     # Validation
     # Get the required API key variable for validation
@@ -202,7 +202,7 @@ def main():
     
     with col1:
         if not st.session_state.is_running:
-            if st.button("▶️ Run", disabled=not ready_to_run, type="primary"):
+            if st.button("Run", disabled=not ready_to_run, type="primary"):
                 # Initialize evaluator
                 st.session_state.evaluator = DemoEvaluator(
                     notion_key=notion_key,
@@ -227,14 +227,14 @@ def main():
                 st.session_state.execution_thread.start()
                 st.rerun()
         else:
-            if st.button("⏹️ Stop", type="secondary"):
+            if st.button("Stop", type="secondary"):
                 if st.session_state.evaluator:
                     st.session_state.evaluator.stop()
                 st.session_state.is_running = False
                 st.rerun()
     
     with col2:
-        if st.button("🗑️ Clear", disabled=st.session_state.is_running):
+        if st.button("Clear", disabled=st.session_state.is_running):
             st.session_state.logs_list = []
             st.session_state.current_response = None
             st.session_state.result = None
@@ -242,7 +242,7 @@ def main():
     
     with col3:
         if st.session_state.is_running:
-            st.info("🔄 Running...")
+            st.info("Running...")
         elif st.session_state.result:
             if st.session_state.result.execution_success and st.session_state.result.verification_success:
                 st.success("✅ Completed")
@@ -251,7 +251,7 @@ def main():
     
     # Real-time logs display
     if st.session_state.logs_list:
-        st.subheader("🔄 Live Execution Log")
+        st.subheader("Live Execution Log")
         logs_container = st.container()
         with logs_container:
             st.markdown("\n\n".join(st.session_state.logs_list))
