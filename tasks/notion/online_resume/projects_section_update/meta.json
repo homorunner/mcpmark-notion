@@ -4,7 +4,12 @@
   "category": "online_resume",
   "created_at": "2025-07-27",
   "difficulty": "random",
-  "tags": ["projects", "portfolio", "resume update", "formatting"],
+  "tags": [
+    "projects",
+    "portfolio",
+    "resume update",
+    "formatting"
+  ],
   "mcp": "notion",
-  "ori_template_url": ""
+  "ori_template_url": "https://painted-tennis-ebc.notion.site/Online-Resume-23181626b6d781159faaeb5eadaf612e"
 }

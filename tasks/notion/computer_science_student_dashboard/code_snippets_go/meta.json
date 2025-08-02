@@ -4,7 +4,12 @@
   "category": "computer_science_student_dashboard",
   "created_at": "2025-07-27",
   "difficulty": "random",
-  "tags": ["code", "programming", "go language", "snippets"],
+  "tags": [
+    "code",
+    "programming",
+    "go language",
+    "snippets"
+  ],
   "mcp": "notion",
-  "ori_template_url": ""
+  "ori_template_url": "https://painted-tennis-ebc.notion.site/Computer-Science-Student-Dashboard-23e81626b6d78083b787d3c832b02ef4"
 }
