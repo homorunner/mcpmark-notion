@@ -25,9 +25,7 @@ class GitHubStateManager(BaseStateManager):
         self,
         github_token: str,
         # Name of the evaluation organisation / user where temporary test repositories are created
-        eval_org: str = "MCPLeague-Eval",
-        # (Deprecated) eval_repo_prefix kept for backward compatibility but ignored
-        eval_repo_prefix: str | None = None,
+        eval_org: str ="mcpleague-eval",
         # Local directory that stores *exported* repository templates (produced by repo_exporter.py)
         templates_root: str = "./github_state",
     ):
@@ -37,7 +35,6 @@ class GitHubStateManager(BaseStateManager):
         Args:
             github_token: GitHub Personal Access Token used for *all* API calls.
             eval_org: Organisation / user used to host **ephemeral evaluation repositories**.
-            eval_repo_prefix: Prefix for names of the evaluation repositories that will be created.
         """
         super().__init__(service_name="github")
 
@@ -87,11 +84,7 @@ class GitHubStateManager(BaseStateManager):
 
         # Initial state mapping - categories to initial state repositories
         self.initial_state_mapping = {
-            "mixeval": "JinjieNi-MixEval",  # Use arvinxx/empty-repo as base initial state
-            "issue_management": "empty-repo",  # Currently all use empty-repo, can be extended later
-            "pull_request_workflow": "empty-repo",
-            "branch_management": "empty-repo",
-            "complex_workflows": "empty-repo"
+            "mixeval": "JinjieNi-MixEval",
         }
 
     # =========================================================================
@@ -227,20 +220,31 @@ class GitHubStateManager(BaseStateManager):
 
         # Issues
         issues_data = json.loads((template_dir / "issues.json").read_text())
+        created_issues = 0
+        logger.info("[phase] Re-creating issues …")
         for itm in issues_data:
             new_no = _create_issue(itm)
             if new_no:
+                created_issues += 1
                 for c in itm.get("comments", []):
                     _create_comment(new_no, f"*Original author: @{c['user']}*\n\n{c['body']}")
+        logger.info("[phase] Created %d out of %d issues", created_issues, len(issues_data))
 
         # Pull requests
+        logger.info("[phase] Re-creating pull requests …")
+        created_prs = 0
+        skipped_prs = 0
         for pr in pulls_data:
             new_pr_no = _create_pull(pr)
             if new_pr_no:
+                created_prs += 1
                 for c in pr.get("comments", []):
                     _create_comment(new_pr_no, f"*Original author: @{c['user']}*\n\n{c['body']}")
                 for rc in pr.get("review_comments", []):
                     _create_comment(new_pr_no, f"*Original author: @{rc['user']}* (review)\n\n{rc['body']}")
+            else:
+                skipped_prs += 1
+        logger.info("[phase] Created %d PRs, skipped %d PRs", created_prs, skipped_prs)
 
         logger.info("[import] Repository import complete: %s", html_url)
         return html_url
