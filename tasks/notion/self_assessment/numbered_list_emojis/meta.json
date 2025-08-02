@@ -4,7 +4,12 @@
   "category": "self_assessment",
   "created_at": "2025-07-27",
   "difficulty": "random",
-  "tags": ["formatting", "emojis", "lists", "visual"],
+  "tags": [
+    "formatting",
+    "emojis",
+    "lists",
+    "visual"
+  ],
   "mcp": "notion",
-  "ori_template_url": ""
+  "ori_template_url": "https://painted-tennis-ebc.notion.site/Self-Assessment-24381626b6d780fe9f56c2ba14ea042d"
 }
