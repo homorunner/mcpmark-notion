@@ -85,54 +85,11 @@ class NotionTaskManager(BaseTaskManager):
     # =========================================================================
     # Service-specific implementations for template methods
     # =========================================================================
+    # No custom task discovery methods needed; relying entirely on BaseTaskManager defaults.
 
     def _get_service_directory_name(self) -> str:
         """Return the service directory name for Notion."""
         return "notion"
-
-    def _find_task_files(self, category_dir: Path) -> List[Dict[str, Any]]:
-        """Discover tasks in a Notion *category* directory.
-
-        Each task lives in its own sub-directory directly under the category, **without**
-        any `task_` prefix. The expected structure for a single task is::
-
-            <category>/<task_name>/
-                ├── description.md
-                ├── verify.py
-                └── meta.json          # optional, not required
-
-        Example::
-
-            company_in_a_box/employee_onboarding/
-            online_resume/skills_development_tracker/
-
-        This method returns a list of dictionaries, one per task, containing the
-        resolved file paths and the `task_name` slug.  We intentionally **ignore**
-        the legacy `task_X` style directories.
-        """
-
-        task_files: List[Dict[str, Any]] = []
-
-        for task_dir in category_dir.iterdir():
-            # Skip anything that is not a directory or is hidden
-            if not task_dir.is_dir() or task_dir.name.startswith("."):
-                continue
-
-            description_path = task_dir / "description.md"
-            verify_path = task_dir / "verify.py"
-
-            # We consider a directory a valid task only if the two mandatory files exist
-            if not (description_path.exists() and verify_path.exists()):
-                logger.warning("Skipping %s – missing description.md or verify.py", task_dir)
-                continue
-
-            task_files.append({
-                "task_name": task_dir.name,
-                "instruction_path": description_path,
-                "verification_path": verify_path,
-            })
-
-        return task_files
 
     def _create_task_from_files(self, category_name: str, task_files_info: Dict[str, Any]) -> Optional[NotionTask]:
         """Instantiate a `NotionTask` from the dictionary returned by `_find_task_files`."""

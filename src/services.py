@@ -82,17 +82,11 @@ SERVICES = {
             # Evaluation organisation / user that hosts ephemeral test repositories
             "eval_org": {
                 "env_var": "GITHUB_EVAL_ORG",
-                "default": "MCPLeague-Eval",
+                "default": "mcpleague-eval",
                 "required": False,
                 "description": "Evaluation organisation or user for creating temporary test repositories"
             },
-            # Organisation / user that hosts read-only template repositories (initial state)
-            "source_org": {
-                "env_var": "GITHUB_SOURCE_ORG",
-                "default": "MCPLeague-Source",
-                "required": False,
-                "description": "Organisation or user that stores immutable initial-state template repositories"
-            },
+            # (source_org removed – template repos now imported from local files)
         },
         "components": {
             "task_manager": "src.mcp_services.github.github_task_manager.GitHubTaskManager",
@@ -104,8 +98,7 @@ SERVICES = {
                 "github_token": "api_key",
                 # Map evaluation org / account
                 "eval_org": "eval_org",
-                # Map source org that hosts template repositories
-                "source_org": "source_org",
+
             },
             "login_helper": {
                 "token": "api_key",
