@@ -51,6 +51,17 @@ class DemoTask:
             except (json.JSONDecodeError, IOError):
                 return None
         return None
+    
+    def get_gt_page_url(self) -> Optional[str]:
+        """Read and return the ground truth page URL from meta.json."""
+        if self.meta_path.exists():
+            try:
+                with open(self.meta_path, 'r', encoding='utf-8') as f:
+                    meta_data = json.load(f)
+                return meta_data.get('gt_page_url')
+            except (json.JSONDecodeError, IOError):
+                return None
+        return None
 
 
 class DemoTaskManager:

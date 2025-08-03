@@ -313,9 +313,9 @@ def verify(notion: Client, main_id: str = None) -> bool:
     successful_checks = sum(1 for result in verification_results if result.startswith("✅"))
     
     # Print all verification results
-    print("\n=== SOP Template Verification Results ===")
+    print("\n=== SOP Template Verification Results ===", file=sys.stderr)
     for result in verification_results:
-        print(result)
+        print(result, file=sys.stderr)
     
     print(f"\n=== Summary: {successful_checks}/{total_checks} checks passed ===")
     

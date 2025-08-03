@@ -1,7 +1,7 @@
 Go to my Self Assessment page, and then create a hyperfocus analysis report by analyzing sessions with high productivity but significant challenges.
 
 **Task Requirements:**
-1. Create a new page titled "Hyperfocus Analysis Report" as a child of the Self Assessment page. The new page should be located between 'Why Use the Term "Hyperfocus"?' callout and a divider line.
+1. Create a new page titled "Hyperfocus Analysis Report" as a child of the Self Assessment page. The new page should be located between 'Why Use the Term "Hyperfocus"?' callout and the following divider line.
 2. Query the "Hyperfocus Self-Assessment Worksheet" database to find all sessions where:
    - Work Completion Rate is greater than 80% (0.8)
    - At least one challenge is present in the Challenges field
@@ -9,7 +9,7 @@ Go to my Self Assessment page, and then create a hyperfocus analysis report by a
    - A heading showing the date and activity type (format: YYYY-MM-DD Activity)
    - A bullet list containing:
      - Focus factors used (e.g., Focus factors: XXX, YYY)
-     - Energy level and mood (format: "Energy: X/5, Mood: Y/5")
+     - Energy level and mood (format: "Energy: X/10, Mood: Y/10")
      - Challenges faced (e.g., Challenges: XXX, YYY)
      - Strategies that helped overcome challenges (e.g., Strategies: XXX, YYY)
      - Work completion rate (format: "Completion: XX%")

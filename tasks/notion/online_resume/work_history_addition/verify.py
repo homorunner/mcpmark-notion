@@ -102,7 +102,7 @@ def verify(notion: Client, main_id: str = None) -> bool:
                     column_image_url = inner_block.get("image", {}).get("file", {}).get("url")
                     break
             
-            if not column_image_url or column_image_url != education_image_url:
+            if not column_image_url or column_image_url[:100] != education_image_url[:100]:
                 continue
 
             for j, inner_block in enumerate(text_column_blocks):
