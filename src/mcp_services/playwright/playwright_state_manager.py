@@ -77,6 +77,7 @@ class PlaywrightStateManager(BaseStateManager):
             "element_extraction": "https://mcp-eval-website.vercel.app/extraction",
             "form_interaction": "https://mcp-eval-website.vercel.app/forms/",
             "web_navigation": "https://mcp-eval-website.vercel.app/navigation",
+            "authentication": "https://mcp-eval-website.vercel.app/auth/turnstile",
         }
         
         logger.info("Playwright state manager initialized")
