@@ -328,12 +328,16 @@ class BaseTaskManager(ABC):
     
     def _create_task_from_files(self, category_name: str, task_files_info: Dict[str, Any]) -> Optional[BaseTask]:
         """Create a task from file information (default implementation)."""
+        # Extract task ID from task_name (e.g., "task_1" -> 1)
+        task_name = task_files_info['task_name']
+        task_id = self.extract_task_id(task_name, r'task_(\d+)')
+        
         return self.task_class(
-            task_instruction_path=task_files_info['description'],
-            task_verification_path=task_files_info['verification'],
+            task_instruction_path=task_files_info['instruction_path'],
+            task_verification_path=task_files_info['verification_path'],
             service=self.service,
             category=category_name,
-            task_id=task_files_info['task_id']
+            task_id=task_id
         )
     
     def _read_task_instruction(self, task: BaseTask) -> str:
