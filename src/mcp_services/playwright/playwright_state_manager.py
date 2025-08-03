@@ -57,7 +57,8 @@ class PlaywrightStateManager(BaseStateManager):
         super().__init__(service_name="playwright")
         
         self.browser_name = browser
-        self.headless = headless
+        # self.headless = headless
+        self.headless = False
         self.state_path = state_path or Path.cwd() / "playwright_state.json"
         self.network_origins = network_origins
         self.user_profile = user_profile
@@ -92,29 +93,26 @@ class PlaywrightStateManager(BaseStateManager):
             InitialStateInfo with browser context details
         """
         try:
-            logger.info(f"Setting up browser context for task: {task.name}")
-            
-            # Start Playwright if not already running
-            if not self._playwright:
-                self._playwright = sync_playwright().start()
-                browser_type = getattr(self._playwright, self.browser_name)
-                self._browser = browser_type.launch(headless=self.headless)
-            
-            # Create isolated context for this task
-            context_options = self._get_context_options(task)
-            self._current_context = self._browser.new_context(**context_options)
-            
-            # Set up test environment based on task category
-            test_url = self._setup_test_environment(task)
-            
-            # Track the context for cleanup
-            context_id = f"context_{task.category}_{task.task_id}_{int(time.time())}"
+            logger.info(
+                "Skipping Playwright browser launch – no initial browser state "
+                "needed for task: %s", task.name
+            )
+
+            # Generate a lightweight identifier to allow resource tracking even
+            # though no real browser context is created.
+            context_id = f"noop_{task.category}_{task.task_id}_{int(time.time())}"
+
+            # We still expose the canonical test URL (if any) because some
+            # consumers add it to the task metadata.
+            test_url = self.test_environments.get(task.category)
+
+            # Record a dummy resource so cleanup logic remains symmetrical.
             self.track_resource('browser_context', context_id, {
                 'task_name': task.name,
                 'task_category': task.category,
-                'test_url': test_url
+                'test_url': test_url,
             })
-            
+
             return InitialStateInfo(
                 state_id=context_id,
                 state_url=test_url,
@@ -122,12 +120,13 @@ class PlaywrightStateManager(BaseStateManager):
                     'browser': self.browser_name,
                     'headless': self.headless,
                     'test_url': test_url,
-                    'task_category': task.category
-                }
+                    'task_category': task.category,
+                },
             )
-            
+
         except Exception as e:
-            logger.error(f"Failed to create browser state for {task.name}: {e}")
+            logger.error(
+                f"Failed to create stub initial state for {task.name}: {e}")
             return None
 
     def _store_initial_state_info(self, task: BaseTask, state_info: InitialStateInfo) -> None:

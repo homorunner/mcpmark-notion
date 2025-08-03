@@ -8,7 +8,7 @@ Follows anti-over-engineering principles: keep it simple, do what's needed.
 
 import sys
 from pathlib import Path
-from typing import List
+from typing import List, Dict, Any
 
 from src.base.task_manager import BaseTask, BaseTaskManager
 
@@ -23,6 +23,25 @@ class PlaywrightTaskManager(BaseTaskManager):
         
         super().__init__(tasks_root, service="playwright", task_class=BaseTask,
                          task_organization="directory")
+
+    def _create_task_from_files(self, category_name: str, task_files_info: Dict[str, Any]) -> BaseTask:
+        """Instantiate a `BaseTask` from the dictionary returned by `_find_task_files`."""
+        # Extract numeric ID from folder name like "task_1" so that the default
+        # `BaseTask.name` ("{category}/task_{task_id}") matches the original path
+        # pattern used by the CLI filter, e.g. "form_interaction/task_1".
+        try:
+            task_id = int(task_files_info["task_name"].split("_")[1])
+        except (IndexError, ValueError):
+            # Fallback to entire slug when it is not in the expected format
+            task_id = task_files_info["task_name"]
+
+        return BaseTask(
+            task_instruction_path=task_files_info["instruction_path"],
+            task_verification_path=task_files_info["verification_path"],
+            service="playwright",
+            category=category_name,
+            task_id=task_id,
+        )
 
     def _get_verification_command(self, task: BaseTask) -> List[str]:
         """Get verification command - just run the verify.py script."""
