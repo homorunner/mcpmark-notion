@@ -177,8 +177,12 @@ def verify(notion: Client, main_id: str = None) -> bool:
             if "Top 2 Most Effective Strategies" in callout_text:
                 has_callout = True
                 # Check if it contains strategy information
-                for strategy, _ in top_2_strategies:
-                    if strategy in callout_text:
+                s1, n1 = top_2_strategies[0]
+                s2, n2 = top_2_strategies[1]
+                t1 = f"{s1} (used in {n1} sessions)"
+                t2 = f"{s2} (used in {n2} sessions)"
+                
+                if t1 in callout_text and t2 in callout_text:
                         has_top_strategies = True
                         break
         

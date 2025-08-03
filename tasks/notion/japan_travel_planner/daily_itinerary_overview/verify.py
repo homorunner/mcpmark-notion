@@ -165,10 +165,10 @@ def verify(notion: Client, main_id: str = None) -> bool:
                 found_headings_in_order.append((heading_text, expected_type))
         
         # Check for trip summary paragraph
-        if block_type == "paragraph" and "Total activities visited:" in block_text:
+        if block_type == "paragraph" and "Total activities visited (from Day 1 to Day 3):" in block_text:
             found_summary = True
             # Check if the format is correct (contains a number)
-            if re.search(r"Total activities visited:\s*\d+", block_text):
+            if re.search(r"Total activities visited \(from Day 1 to Day 3\):\s*\d+", block_text):
                 summary_has_correct_format = True
         
         # Check for to-do list items (activities under day headings)
@@ -197,7 +197,7 @@ def verify(notion: Client, main_id: str = None) -> bool:
 
     # Verify trip summary exists and has correct format
     if not found_summary:
-        print("Error: Trip summary paragraph with 'Total activities visited:' not found.", file=sys.stderr)
+        print("Error: Trip summary paragraph with 'Total activities visite' not found.", file=sys.stderr)
         return False
         
     if not summary_has_correct_format:
