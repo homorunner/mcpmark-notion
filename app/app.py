@@ -1,5 +1,5 @@
 """
-MCP-League Demo Application
+MCPBench Demo Application
 ========================
 
 A minimal Streamlit application to demonstrate the evaluation process
@@ -50,7 +50,7 @@ def run_verification_in_thread(evaluator, task_name, page_id, log_queue):
 
 def main():
     st.set_page_config(
-        page_title="MCP-League Demo",
+        page_title="MCPBench Demo",
         page_icon="🔬",
         layout="wide"
     )
@@ -81,9 +81,9 @@ def main():
     if 'selected_page_id' not in st.session_state:
         st.session_state.selected_page_id = None
     
-    st.title("🔬 MCP-League Evaluation Demo")
+    st.title("🔬 MCPBench Evaluation Demo")
     st.markdown("""
-    This demo shows how MCP-League evaluates LLM agents on Notion tasks.
+    This demo shows how MCPBench evaluates LLM agents on Notion tasks.
     Select a task, provide your Notion credentials, and watch the evaluation process.
     """)
     
@@ -152,8 +152,17 @@ def main():
     with col1:
         st.header("Task Selection")
         
-        # Get available tasks
-        available_tasks = task_manager.get_available_tasks()
+        # Get available tasks grouped by input (category) – one task per input, max 5 inputs
+        all_tasks = task_manager.get_available_tasks()
+        available_tasks = []
+        seen_categories = set()
+        for task in all_tasks:
+            category = task["value"].split("/", 1)[0]
+            if category not in seen_categories:
+                seen_categories.add(category)
+                available_tasks.append(task)
+            if len(available_tasks) >= 5:
+                break
         
         if not available_tasks:
             st.error("No tasks found. Please ensure the tasks directory exists.")
@@ -180,17 +189,21 @@ def main():
             task = task_manager.get_task_by_name(selected_task)
             if task:
                 template_url = task.get_template_url()
+                gt_page_url = task.get_gt_page_url()
                 if template_url:
-                    st.header("Notion Template")
-                    st.markdown(f"**Template URL:** [{template_url}]({template_url})")
+                    st.header("Notion Input Page")
+                    st.markdown(f"**Input Page URL:** [{template_url}]({template_url})")
                     st.info("""
                     **Steps to proceed:**
-                    1. Click the template URL above to open it in Notion
-                    2. Duplicate the template to your workspace (must be connected to your API key)
+                    1. Click the input page URL above to open it in Notion
+                    2. Duplicate the input page to your workspace (must be connected to your API key)
                     3. Copy the duplicated page's URL
                     4. Extract the Page ID (last part after the page name, e.g., `1234567890abcdef`)
                     5. Enter the Page ID below
                     """)
+                if gt_page_url:
+                    st.header("Ground Truth Output Page")
+                    st.markdown(f"**Output Page URL (for reference):** [{gt_page_url}]({gt_page_url})")
         
         st.header("Notion Page ID")
         
@@ -200,14 +213,7 @@ def main():
             help="The ID from your duplicated Notion page URL (e.g., from https://notion.so/Page-Name-1234567890abcdef, use 1234567890abcdef)"
         )
         
-        # Ground Truth Page section
-        if selected_task:
-            task = task_manager.get_task_by_name(selected_task)
-            if task:
-                gt_page_url = task.get_gt_page_url()
-                if gt_page_url:
-                    st.header("Ground Truth Page")
-                    st.markdown(f"**Page URL (for reference):** [{gt_page_url}]({gt_page_url})")
+        # (Ground-Truth Output Page now displayed above with Notion Input Page)
     
     # Evaluation section
     st.header("Run Evaluation")
@@ -450,7 +456,7 @@ def main():
     st.markdown("---")
     st.markdown("""
     <div style='text-align: center; color: gray;'>
-    MCP-League Demo - Evaluating LLM Agents with Model Context Protocol
+    MCPBench Demo - Evaluating LLM Agents with Model Context Protocol
     </div>
     """, unsafe_allow_html=True)
 
