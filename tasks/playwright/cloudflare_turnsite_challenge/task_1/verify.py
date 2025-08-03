@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Verification script for Playwright Cloudflare Turnstile authentication task.
+Verification script for Playwright Cloudflare Turnstile authentication challege task.
 
 This script uses dual verification:
 1. Independent Playwright verification of Turnstile functionality
