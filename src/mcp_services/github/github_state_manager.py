@@ -162,11 +162,11 @@ class GitHubStateManager(BaseStateManager):
         auth_user = self._get_authenticated_user()
         create_url = f"https://api.github.com/user/repos" if owner == auth_user else f"https://api.github.com/orgs/{owner}/repos"
 
-        resp = self.session.post(create_url, json=create_payload)
+        resp = self._request_with_retry("POST", create_url, json=create_payload)
         if resp.status_code == 422 and "name already exists" in resp.text:
             # Attempt to delete and recreate
             self._delete_repository(owner, repo_name)
-            resp = self.session.post(create_url, json=create_payload)
+            resp = self._request_with_retry("POST", create_url, json=create_payload)
 
         if resp.status_code not in (200, 201):
             raise RuntimeError(f"Failed to create repo: {resp.status_code} {resp.text}")
@@ -186,7 +186,11 @@ class GitHubStateManager(BaseStateManager):
         # ------------------------------------------------------------------
 
         def _create_comment(issue_number: int, body: str):
-            self.session.post(f"https://api.github.com/repos/{owner}/{repo_name}/issues/{issue_number}/comments", json={"body": body})
+            self._request_with_retry(
+                "POST",
+                f"https://api.github.com/repos/{owner}/{repo_name}/issues/{issue_number}/comments",
+                json={"body": body},
+            )
 
         def _create_issue(item: dict) -> Optional[int]:
             data = {
@@ -194,12 +198,20 @@ class GitHubStateManager(BaseStateManager):
                 "body": item.get("body", ""),
                 "labels": item.get("labels", [])
             }
-            r = self.session.post(f"https://api.github.com/repos/{owner}/{repo_name}/issues", json=data)
+            r = self._request_with_retry(
+                "POST",
+                f"https://api.github.com/repos/{owner}/{repo_name}/issues",
+                json=data,
+            )
             if r.status_code not in (200, 201):
                 return None
             new_no = r.json()["number"]
             if item.get("state") == "closed":
-                self.session.patch(f"https://api.github.com/repos/{owner}/{repo_name}/issues/{new_no}", json={"state": "closed"})
+                self._request_with_retry(
+                    "PATCH",
+                    f"https://api.github.com/repos/{owner}/{repo_name}/issues/{new_no}",
+                    json={"state": "closed"},
+                )
             return new_no
 
         def _create_pull(pr_itm: dict) -> Optional[int]:
@@ -213,7 +225,11 @@ class GitHubStateManager(BaseStateManager):
                 "head": pr_itm.get("local_branch", pr_itm["head"]),
                 "base": pr_itm["base"],
             }
-            r = self.session.post(f"https://api.github.com/repos/{owner}/{repo_name}/pulls", json=payload)
+            r = self._request_with_retry(
+                "POST",
+                f"https://api.github.com/repos/{owner}/{repo_name}/pulls",
+                json=payload,
+            )
             if r.status_code not in (200, 201):
                 return None
             return r.json()["number"]
@@ -358,6 +374,41 @@ class GitHubStateManager(BaseStateManager):
             self._auth_user = response.json()["login"]
             return self._auth_user
         return None
+
+    # ---------------------------------------------------------------------
+    # Generic request helper with rate-limit (403) retry handling
+    # ---------------------------------------------------------------------
+    def _request_with_retry(self, method: str, url: str, *, max_retries: int = 2, sleep_seconds: int = 120, **kwargs):
+        """Send a GitHub API request with basic rate-limit handling.
+
+        If a request receives HTTP 403 (rate limit) we will sleep for
+        ``sleep_seconds`` seconds and retry – up to ``max_retries`` times.
+        After the retries are exhausted the original response is escalated
+        as ``RuntimeError`` so that the caller can handle/abort.
+        """
+        import time  # local import to avoid adding global dependency
+
+        attempt = 0
+        while True:
+            resp = self.session.request(method, url, **kwargs)
+            # Successful or non-rate-limited response – return immediately
+            if resp.status_code != 403:
+                return resp
+
+            # 403 – very likely rate-limited
+            if attempt >= max_retries:
+                raise RuntimeError(
+                    f"GitHub API rate limited after {attempt + 1} attempts: {resp.status_code} {resp.text}"
+                )
+
+            logger.warning(
+                "GitHub API rate limit encountered (attempt %d/%d). Sleeping %d seconds before retrying …",
+                attempt + 1,
+                max_retries + 1,
+                sleep_seconds,
+            )
+            time.sleep(sleep_seconds)
+            attempt += 1
 
     # =========================================================================
     # Initial State Selection and Repository Creation
