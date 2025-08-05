@@ -9,7 +9,7 @@ It ships with **20 real-world tasks** (e.g., habit tracker, online resume builde
 Before running MCPBench you need to prepare the environment for the MCP service you plan to evaluate. Follow the service-specific guides below:
 
 - **Notion** – [docs/setup/notion-workspace-setup.md](docs/setup/notion-workspace-setup.md)
-- **GitHub** – coming soon...
+- **GitHub** – [docs/setup/github-workspace-setup.md](docs/setup/github-workspace-setup.md)
 - **Filesystem** – coming soon...
 
 ## 2 · Environment Variables
@@ -30,6 +30,7 @@ PLAYWRIGHT_HEADLESS="True"
 
 ## GitHub
 GITHUB_TOKEN="your-github-token-here"
+GITHUB_EVAL_ORG="your-eval-org-name"
 
 ## Postgres
 POSTGRES_PASSWORD="your-postgres-password"
