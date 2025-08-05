@@ -108,3 +108,40 @@ class GitHubTaskManager(BaseTaskManager):
 
     # Note: execute_task and get_task_instruction are now implemented in the base class
     # Service-specific behavior is handled through the template methods above
+
+    def get_task_instruction(self, task: GitHubTask) -> str:
+        """Return task instruction prefixed with repository context.
+
+        Adds an English prefix to every GitHub task instruction so that the
+        agent knows **exactly** which repository to operate on, following the
+        pattern requested by the user:
+
+            Please execute the following task in my repository {owner}/{repo_name}:
+
+        If the repository URL has not yet been injected into the ``task`` (for
+        example when the state manager has not run), we fall back to a more
+        generic prefix without owner/repo placeholder.
+        """
+        # Read the original task description first
+        base_instruction = task.get_task_instruction()
+
+        # Derive the owner/repo pair from the repository URL if available
+        prefix: str
+        if task.repository_url:
+            # Example URL: https://github.com/owner/repo_name.git (or without .git)
+            url_parts = task.repository_url.rstrip("/").replace(".git", "").split("/")
+            if len(url_parts) >= 2:
+                owner, repo_name = url_parts[-2], url_parts[-1]
+                prefix = f"Please execute the following task in my repository {owner}/{repo_name}:"
+            else:
+                prefix = "Please execute the following task:"
+        else:
+            prefix = "Please execute the following task:"
+
+        # Compose final instruction (prefix + original + guidance note)
+        formatted_instruction = (
+            f"{prefix}\n\n"
+            f"{base_instruction.strip()}\n\n"
+            "Note: Use GitHub tools to complete this task. Work systematically and verify your actions."
+        )
+        return formatted_instruction
