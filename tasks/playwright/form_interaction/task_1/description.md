@@ -13,21 +13,30 @@ Use Playwright MCP tools to interact with web forms and submit data.
    - Delivery Time: Select "Afternoon" radio button (Morning/Afternoon/Evening, required)
    - Additional Comments: "This is a test submission for MCPBench" (textarea, optional)
 3. Submit the form by clicking the submit button
-4. Wait for redirect to /forms/result page
-5. Capture the response page content and verify submitted data
+4. Wait for backend processing and redirect to /forms/result/{submission_id} page
+5. Capture the response page content and verify submitted data appears correctly
 
 ## Expected Outcomes:
 
 - All required form fields should be filled with specified data
 - Form validation should pass (all required fields completed)
 - Form submission should be successful without errors
-- Page should redirect to /forms/result automatically
-- Response page should display the submitted form data from sessionStorage
+- Page should redirect to /forms/result/{submission_id} automatically after backend processing
+- Result page should display server-rendered submission data with proper formatting
 
 ## Success Criteria:
 
 - All 6 form fields are filled correctly (5 required + 1 optional)
 - No form validation errors occur
-- Form submission completes successfully
-- Redirect to /forms/result happens automatically
-- Response page displays all submitted data correctly
+- Form submission completes successfully with backend processing
+- Redirect to /forms/result/{submission_id} happens automatically (where {submission_id} is a numeric ID)
+- Result page displays all submitted data with proper field labels:
+  - Submission ID: {numeric_id}
+  - Customer Name: John Doe
+  - Phone Number: 123-456-7890
+  - Email Address: john.doe@example.com
+  - Size: large
+  - Delivery Time: afternoon
+  - Comments: This is a test submission for MCPBench
+  - Submitted At: {timestamp}
+- All submitted data matches the input values exactly

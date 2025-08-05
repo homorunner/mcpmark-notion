@@ -10,7 +10,6 @@ This script uses dual verification:
 import sys
 import json
 import re
-import os
 from pathlib import Path
 from typing import Dict, Any
 from playwright.sync_api import sync_playwright
@@ -19,438 +18,310 @@ from playwright.sync_api import sync_playwright
 # CONFIGURATION
 # =============================================================================
 
-# Target website for verification
 TARGET_URL = "https://mcp-eval-website.vercel.app/forms/"
-
-# Expected form fields based on task description (6 fields total)
-EXPECTED_FORM_FIELDS = {
-    "custname": "Customer Name",
-    "custtel": "Phone",
-    "custemail": "Email", 
-    "size": "Size",
-    "delivery": "Delivery Time",
-    "comments": "Comments"
-}
 
 # Test data for form submission (matches task requirements)
 TEST_FORM_DATA = {
     "custname": "John Doe",
-    "custtel": "123-456-7890",
+    "custtel": "123-456-7890", 
     "custemail": "john.doe@example.com",
-    "size": "large",
-    "delivery": "afternoon",
+    "size": "Large",
+    "delivery": "Afternoon",
     "comments": "This is a test submission for MCPBench"
 }
 
-# Accuracy thresholds for comparison
-MIN_ACCURACY_THRESHOLD = 1.0  # 100% accuracy required to pass
+EXPECTED_FIELD_COUNT = 6
 
 # =============================================================================
-# INDEPENDENT PLAYWRIGHT VERIFICATION
+# CORE VERIFICATION
 # =============================================================================
 
-def verify_form_fields() -> Dict[str, Any]:
-    """Use Playwright to verify form fields exist and are functional."""
+def get_field_selectors(field_name: str) -> list[str]:
+    """Get common selectors for a form field."""
+    return [
+        f"input[name='{field_name}']",
+        f"textarea[name='{field_name}']", 
+        f"select[name='{field_name}']",
+        f"input[id='{field_name}']",
+        f"textarea[id='{field_name}']",
+        f"select[id='{field_name}']"
+    ]
+
+def fill_form_field(page, field_name: str, value: str) -> bool:
+    """Fill a single form field with the given value."""
+    for selector in get_field_selectors(field_name):
+        try:
+            if page.locator(selector).count() > 0:
+                element = page.locator(selector).first
+                tag_name = element.evaluate("element => element.tagName.toLowerCase()", timeout=1000)
+                
+                if tag_name == "select":
+                    page.select_option(selector, value=value)
+                elif element.get_attribute("type") == "radio":
+                    # For radio buttons, use lowercase values as that's what the form expects
+                    radio_value = value.lower()
+                    page.check(f"{selector}[value='{radio_value}']")
+                else:
+                    page.fill(selector, value)
+                return True
+        except:
+            continue
+    return False
+
+def test_form_functionality() -> Dict[str, Any]:
+    """Test complete form functionality: fill, submit, validate result."""
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             page = browser.new_page()
             
-            print(f"🌐 Navigating to: {TARGET_URL}")
+            print(f"🌐 Testing form on: {TARGET_URL}")
             page.goto(TARGET_URL, wait_until="networkidle")
             
-            # Check if form exists
-            form_selector = "form"
-            if not page.locator(form_selector).count():
+            # Check form exists
+            if not page.locator("form").count():
                 browser.close()
-                return {"success": False, "error": "No form found on page"}
+                return {"success": False, "error": "No form found"}
             
-            form_fields_found = {}
+            # Fill all form fields
+            filled_count = 0
+            for field_name, value in TEST_FORM_DATA.items():
+                if fill_form_field(page, field_name, value):
+                    filled_count += 1
             
-            # Check each expected form field
-            for field_name, field_label in EXPECTED_FORM_FIELDS.items():
-                # Try different selectors for each field
-                selectors = [
-                    f"input[name='{field_name}']",
-                    f"textarea[name='{field_name}']",
-                    f"select[name='{field_name}']",
-                    f"input[id='{field_name}']",
-                    f"textarea[id='{field_name}']",
-                    f"select[id='{field_name}']"
-                ]
-                
-                field_found = False
-                field_type = None
-                
-                for selector in selectors:
-                    if page.locator(selector).count() > 0:
-                        field_found = True
-                        element = page.locator(selector).first
-                        field_type = element.get_attribute("type")
-                        if not field_type:
-                            # Get tag name as fallback
-                            try:
-                                field_type = element.evaluate("element => element.tagName.toLowerCase()")
-                            except:
-                                field_type = "unknown"
-                        break
-                
-                form_fields_found[field_name] = {
-                    "found": field_found,
-                    "type": field_type
-                }
+            # Submit form
+            submit_selectors = ["input[type='submit']", "button[type='submit']", "button:has-text('Submit')"]
+            submitted = False
             
+            for selector in submit_selectors:
+                if page.locator(selector).count() > 0:
+                    page.click(selector)
+                    submitted = True
+                    break
+            
+            if not submitted:
+                browser.close()
+                return {"success": False, "error": "No submit button found"}
+            
+            # Wait for redirect and validate result page
+            page.wait_for_url(lambda url: "/forms/result/" in url, timeout=10000)
+            current_url = page.url
+            
+            # Extract submission ID
+            match = re.search(r'/forms/result/(\d+)', current_url)
+            if not match:
+                browser.close()
+                return {"success": False, "error": f"Invalid result URL: {current_url}"}
+            
+            submission_id = int(match.group(1))
+            print(f"✅ Redirected to result page with submission ID: {submission_id}")
+            
+            # Wait for content to load and validate
+            page.wait_for_load_state("networkidle")
+            page.wait_for_timeout(2000)
+            
+            result_validation = validate_result_page(page)
             browser.close()
             
             return {
                 "success": True,
-                "form_fields": form_fields_found,
-                "total_fields": len([f for f in form_fields_found.values() if f["found"]]),
-                "expected_fields": len(EXPECTED_FORM_FIELDS)
+                "fields_filled": filled_count,
+                "submission_id": submission_id,
+                "result_validation": result_validation
             }
             
     except Exception as e:
-        print(f"❌ Error during form verification: {e}")
         return {"success": False, "error": str(e)}
 
-def test_form_submission() -> Dict[str, Any]:
-    """Test form submission functionality."""
+def validate_result_page(page) -> Dict[str, Any]:
+    """Validate the backend result page content.""" 
     try:
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
-            
-            print(f"🌐 Testing form submission on: {TARGET_URL}")
-            page.goto(TARGET_URL, wait_until="networkidle")
-            
-            # Fill out the form with test data
-            submission_success = True
-            filled_fields = {}
-            
-            for field_name, test_value in TEST_FORM_DATA.items():
-                selectors = [
-                    f"input[name='{field_name}']",
-                    f"textarea[name='{field_name}']",
-                    f"select[name='{field_name}']",
-                    f"input[id='{field_name}']",
-                    f"textarea[id='{field_name}']",
-                    f"select[id='{field_name}']"
-                ]
-                
-                field_filled = False
-                for selector in selectors:
-                    try:
-                        if page.locator(selector).count() > 0:
-                            element = page.locator(selector).first
-                            try:
-                                tag_name = element.evaluate("element => element.tagName.toLowerCase()")
-                            except:
-                                tag_name = "input"
-                            if tag_name == "select":
-                                # For select elements, try to select by value or text
-                                page.select_option(selector, value=test_value)
-                            elif element.get_attribute("type") == "radio":
-                                # For radio buttons, check the one with matching value
-                                page.check(f"{selector}[value='{test_value}']")
-                            else:
-                                # For text inputs and textareas
-                                page.fill(selector, test_value)
-                            field_filled = True
-                            break
-                    except Exception as e:
-                        continue
-                
-                filled_fields[field_name] = field_filled
-                if not field_filled:
-                    submission_success = False
-            
-            # Try to submit the form
-            submit_attempted = False
-            try:
-                # Look for submit button
-                submit_selectors = [
-                    "input[type='submit']",
-                    "button[type='submit']",
-                    "button:has-text('Submit')",
-                    "input[value*='Submit']"
-                ]
-                
-                for selector in submit_selectors:
-                    if page.locator(selector).count() > 0:
-                        page.click(selector)
-                        submit_attempted = True
-                        break
-                
-                if not submit_attempted:
-                    # Try pressing Enter in the form
-                    page.keyboard.press("Enter")
-                    submit_attempted = True
-                    
-            except Exception as e:
-                print(f"⚠️  Form submission attempt failed: {e}")
-            
-            browser.close()
-            
-            return {
-                "success": True,
-                "filled_fields": filled_fields,
-                "fields_filled_count": sum(1 for f in filled_fields.values() if f),
-                "submit_attempted": submit_attempted,
-                "submission_success": submission_success
-            }
-            
+        page_text = page.inner_text('body')
+        
+        # Extract submission data using patterns
+        patterns = {
+            "customer_name": r"Customer Name:\s*(.+?)(?:\n|$)",
+            "phone_number": r"Phone Number:\s*(.+?)(?:\n|$)", 
+            "email_address": r"Email Address:\s*(.+?)(?:\n|$)",
+            "size": r"Size:\s*(.+?)(?:\n|$)",
+            "delivery_time": r"Delivery Time:\s*(.+?)(?:\n|$)",
+            "comments": r"Comments:\s*(.+?)(?:\n|$)"
+        }
+        
+        extracted_data = {}
+        for key, pattern in patterns.items():
+            match = re.search(pattern, page_text, re.IGNORECASE)
+            if match:
+                extracted_data[key] = match.group(1).strip()
+        
+        # Compare with expected test data (backend normalizes to lowercase)
+        expected_mapping = {
+            "customer_name": TEST_FORM_DATA["custname"],
+            "phone_number": TEST_FORM_DATA["custtel"],
+            "email_address": TEST_FORM_DATA["custemail"], 
+            "size": TEST_FORM_DATA["size"].lower(),  # Backend stores as lowercase
+            "delivery_time": TEST_FORM_DATA["delivery"].lower(),  # Backend stores as lowercase
+            "comments": TEST_FORM_DATA["comments"]
+        }
+        
+        all_correct = True
+        for key, expected in expected_mapping.items():
+            actual = extracted_data.get(key, "").lower().strip()
+            if actual != expected.lower().strip():
+                all_correct = False
+                break
+        
+        return {
+            "has_success_message": "Form Submission Successful" in page_text,
+            "data_extracted": extracted_data, 
+            "all_data_correct": all_correct
+        }
+        
     except Exception as e:
-        print(f"❌ Error during form submission test: {e}")
-        return {"success": False, "error": str(e)}
+        return {"error": str(e)}
 
 # =============================================================================
-# MCP RESULT PARSING
+# MCP RESULT PARSING  
 # =============================================================================
 
-def get_working_directory() -> Path:
-    """Get the working directory where messages.json should be."""
-    # For MCPBench, check current directory first
-    current_dir = Path.cwd()
-    if (current_dir / "messages.json").exists():
-        return current_dir
-    
-    # Fallback to environment variable
-    work_dir = os.getenv("PLAYWRIGHT_WORK_DIR", ".")
-    return Path(work_dir).resolve()
-
-def parse_mcp_agent_results(work_dir: Path) -> Dict[str, Any]:
-    """Extract what the MCP agent actually found from messages.json"""
-    messages_file = work_dir / "messages.json"
+def parse_mcp_results() -> Dict[str, Any]:
+    """Parse MCP agent results from messages.json."""
+    messages_file = Path.cwd() / "messages.json"
     if not messages_file.exists():
         return {"success": False, "error": "No messages.json found"}
     
     try:
         with open(messages_file, 'r', encoding='utf-8') as f:
             messages = json.load(f)
-    except (json.JSONDecodeError, IOError) as e:
+    except Exception as e:
         return {"success": False, "error": f"Failed to read messages.json: {e}"}
     
-    # Initialize findings
-    agent_findings = {
-        "form_fields_found": [],
+    # Check for key activities in agent conversation
+    agent_activities = {
         "form_filled": False,
-        "form_submitted": False,
-        "form_data_used": {}
+        "form_submitted": False, 
+        "result_page_visited": False,
+        "data_verified": False
     }
     
-    # Parse agent's findings from conversation
     for message in messages:
+        # Check assistant messages
         if message.get("role") == "assistant":
             content = str(message.get("content", ""))
-            
-            # Handle both string and list content formats
             if isinstance(message.get("content"), list):
                 content = " ".join(
-                    item.get("text", "") if isinstance(item, dict) else str(item) 
+                    item.get("text", "") if isinstance(item, dict) else str(item)
                     for item in message.get("content", [])
                 )
-            
             content_lower = content.lower()
             
-            # Check for form field interactions
-            for field_name in EXPECTED_FORM_FIELDS.keys():
-                if field_name in content_lower and field_name not in agent_findings["form_fields_found"]:
-                    agent_findings["form_fields_found"].append(field_name)
+            # Check for evidence of key activities  
+            if any(word in content_lower for word in ["fill", "enter", "input", "type", "typed", "typing"]):
+                agent_activities["form_filled"] = True
+            if any(word in content_lower for word in ["submit", "click", "send"]):
+                agent_activities["form_submitted"] = True  
+            if any(phrase in content_lower for phrase in ["result", "redirect", "/forms/result"]):
+                agent_activities["result_page_visited"] = True
+            if any(phrase in content_lower for phrase in ["verify", "validation", "data appears", "correct", "capture", "content"]):
+                agent_activities["data_verified"] = True
+        
+        # Check function call outputs (where the actual playwright commands show)
+        elif message.get("type") == "function_call_output":
+            output = str(message.get("output", ""))
+            output_lower = output.lower()
             
-            # Check for form filling evidence
-            if any(word in content_lower for word in ["filled", "fill", "entered", "input", "typing"]):
-                agent_findings["form_filled"] = True
-            
-            # Check for form submission evidence
-            if any(word in content_lower for word in ["submit", "click", "send", "post"]):
-                agent_findings["form_submitted"] = True
-            
-            # Extract form data used
-            for field_name, test_value in TEST_FORM_DATA.items():
-                if test_value.lower() in content_lower:
-                    agent_findings["form_data_used"][field_name] = test_value
+            if any(word in output_lower for word in ["fill", "enter", "input", "type", "typed", "typing"]):
+                agent_activities["form_filled"] = True
+            if any(word in output_lower for word in ["submit", "click", "send"]):
+                agent_activities["form_submitted"] = True  
+            if any(phrase in output_lower for phrase in ["result", "redirect", "/forms/result"]):
+                agent_activities["result_page_visited"] = True
     
-    return {"success": True, "findings": agent_findings}
-
-# =============================================================================
-# COMPARISON AND EVALUATION
-# =============================================================================
-
-def compare_mcp_vs_independent(mcp_results: Dict, field_data: Dict, submission_data: Dict) -> Dict[str, Any]:
-    """Compare MCP agent findings with independent verification"""
-    comparison = {}
-    
-    # Compare form fields found
-    mcp_fields = set(mcp_results["findings"]["form_fields_found"])
-    actual_fields = set(field_name for field_name, field_info in field_data["form_fields"].items() if field_info["found"])
-    
-    if actual_fields:
-        field_accuracy = len(mcp_fields.intersection(actual_fields)) / len(actual_fields)
-        missing_fields = list(actual_fields - mcp_fields)
-        extra_fields = list(mcp_fields - actual_fields)
-    else:
-        field_accuracy = 0.0
-        missing_fields = []
-        extra_fields = list(mcp_fields)
-    
-    comparison["form_fields"] = {
-        "mcp_count": len(mcp_fields),
-        "independent_count": len(actual_fields),
-        "accuracy": field_accuracy,
-        "match": field_accuracy >= MIN_ACCURACY_THRESHOLD,
-        "missing": missing_fields,
-        "extra": extra_fields
-    }
-    
-    # Compare form interaction (filling)
-    mcp_filled = mcp_results["findings"]["form_filled"]
-    actual_filled = submission_data["fields_filled_count"] >= 4
-    
-    fill_accuracy = 1.0 if (mcp_filled and actual_filled) or (not mcp_filled and not actual_filled) else 0.0
-    
-    comparison["form_filling"] = {
-        "mcp_filled": mcp_filled,
-        "independent_filled": actual_filled,
-        "accuracy": fill_accuracy,
-        "match": fill_accuracy >= MIN_ACCURACY_THRESHOLD
-    }
-    
-    # Compare form submission
-    mcp_submitted = mcp_results["findings"]["form_submitted"]
-    actual_submitted = submission_data["submit_attempted"]
-    
-    submit_accuracy = 1.0 if (mcp_submitted and actual_submitted) or (not mcp_submitted and not actual_submitted) else 0.0
-    
-    comparison["form_submission"] = {
-        "mcp_submitted": mcp_submitted,
-        "independent_submitted": actual_submitted,
-        "accuracy": submit_accuracy,
-        "match": submit_accuracy >= MIN_ACCURACY_THRESHOLD
-    }
-    
-    return comparison
-
-def verify_form_requirements(field_data: Dict[str, Any], submission_data: Dict[str, Any]) -> bool:
-    """Verify that the form meets task requirements."""
-    if not field_data.get("success") or not submission_data.get("success"):
-        print(f"❌ Independent verification failed: {field_data.get('error', '')} {submission_data.get('error', '')}")
-        return False
-    
-    success = True
-    
-    # Check that all expected form fields are present
-    total_fields = field_data["total_fields"]
-    expected_fields = field_data["expected_fields"]
-    
-    if total_fields == expected_fields:
-        print(f"✅ Form fields: {total_fields}/{expected_fields} found")
-    else:
-        print(f"❌ Form fields: {total_fields}/{expected_fields} found (missing some fields)")
-        success = False
-    
-    # Check form submission capability
-    fields_filled = submission_data["fields_filled_count"]
-    if fields_filled >= 4:  # Require at least 4 fields to be fillable
-        print(f"✅ Form interaction: {fields_filled} fields successfully filled")
-    else:
-        print(f"❌ Form interaction: Only {fields_filled} fields could be filled (expected at least 4)")
-        success = False
-    
-    # Check if form submission was attempted
-    if submission_data["submit_attempted"]:
-        print("✅ Form submission: Submit attempt successful")
-    else:
-        print("❌ Form submission: Could not attempt form submission")
-        success = False
-    
-    return success
+    return {"success": True, "activities": agent_activities}
 
 # =============================================================================
 # MAIN VERIFICATION
 # =============================================================================
 
 def verify_task() -> bool:
-    """Verify both independent requirements AND MCP agent accuracy"""
+    """Main verification function."""
     print("🔍 Verifying Playwright Form Interaction Task")
     print("=" * 50)
     
-    # Step 1: Independent verification
-    print("\n🎭 Running independent Playwright verification...")
-    field_data = verify_form_fields()
-    submission_data = test_form_submission()
-    independent_success = verify_form_requirements(field_data, submission_data)
+    # Test independent functionality
+    print("\n🎭 Running independent verification...")
+    test_result = test_form_functionality()
     
-    if not independent_success:
-        print("\n❌ Task requirements cannot be met - form doesn't meet expected functionality")
+    if not test_result["success"]:
+        print(f"❌ Form functionality test failed: {test_result.get('error')}")
         return False
     
-    # Step 2: Parse MCP agent results
-    print("\n🤖 Parsing MCP agent results...")
-    work_dir = get_working_directory()
-    print(f"📁 Working directory: {work_dir}")
+    # Validate results
+    success = True
     
-    mcp_data = parse_mcp_agent_results(work_dir)
-    
-    if not mcp_data["success"]:
-        print(f"❌ Could not parse MCP results: {mcp_data.get('error')}")
-        print("⚠️  Task cannot be evaluated - treating as independent verification only")
-        return independent_success
-    
-    # Step 3: Compare MCP vs Independent
-    print("\n📊 Comparing MCP agent results with independent verification...")
-    comparison = compare_mcp_vs_independent(mcp_data, field_data, submission_data)
-    
-    # Step 4: Evaluation
-    overall_success = True
-    
-    for category, results in comparison.items():
-        accuracy = results["accuracy"] * 100
-        category_name = category.replace("_", " ").title()
-        
-        if results["match"]:
-            print(f"✅ {category_name}: {accuracy:.1f}% accuracy")
-        else:
-            print(f"❌ {category_name}: {accuracy:.1f}% accuracy")
-            overall_success = False
-    
-    # Step 5: Detailed breakdown
-    if not overall_success:
-        print(f"\n📋 Detailed comparison (threshold: {MIN_ACCURACY_THRESHOLD*100}%):")
-        
-        # Form fields detail
-        field_results = comparison["form_fields"]
-        if field_results["missing"] or field_results["extra"]:
-            print(f"   Form Fields:")
-            if field_results["missing"]:
-                print(f"     • Missing: {field_results['missing']}")
-            if field_results["extra"]:
-                print(f"     • Extra: {field_results['extra']}")
-        
-        # Show what MCP found vs actual
-        print(f"\n   MCP Found: {len(mcp_data['findings']['form_fields_found'])} form fields")
-        print(f"   Actually: {field_data['total_fields']} form fields functional")
-        print(f"   MCP Form Filled: {mcp_data['findings']['form_filled']}")
-        print(f"   Actually Fillable: {submission_data['fields_filled_count']} fields")
-    
+    # Check field filling
+    if test_result["fields_filled"] == EXPECTED_FIELD_COUNT:
+        print(f"✅ Form fields: {test_result['fields_filled']}/{EXPECTED_FIELD_COUNT} filled successfully")
     else:
-        print(f"\n🎉 MCP agent successfully interacted with form with ≥{MIN_ACCURACY_THRESHOLD*100}% accuracy in all categories!")
+        print(f"❌ Form fields: Only {test_result['fields_filled']}/{EXPECTED_FIELD_COUNT} filled")
+        success = False
     
-    return overall_success
+    # Check submission ID
+    if test_result.get("submission_id"):
+        print(f"✅ Submission ID: {test_result['submission_id']}")
+    else:
+        print("❌ Submission ID: Not found")
+        success = False
+    
+    # Check result page validation
+    result_validation = test_result.get("result_validation", {})
+    if result_validation.get("all_data_correct"):
+        print("✅ Result page: All data validated correctly")
+    else:
+        print("❌ Result page: Data validation failed")
+        success = False
+    
+    if not success:
+        print("\n❌ Form functionality requirements not met")
+        return False
+    
+    # Parse MCP results if available
+    print("\n🤖 Checking MCP agent results...")
+    mcp_result = parse_mcp_results()
+    
+    if not mcp_result["success"]:
+        print(f"⚠️  {mcp_result.get('error')} - treating as independent verification only")
+        return True
+    
+    # Evaluate MCP performance
+    activities = mcp_result["activities"]
+    mcp_success = True
+    
+    for activity, completed in activities.items():
+        activity_name = activity.replace("_", " ").title()
+        if completed:
+            print(f"✅ MCP {activity_name}: Detected")
+        else:
+            print(f"❌ MCP {activity_name}: Not detected")
+            mcp_success = False
+    
+    if mcp_success:
+        print("\n🎉 Both form functionality and MCP agent performance verified successfully!")
+    else:
+        print("\n⚠️  Form functionality verified, but MCP agent performance incomplete")
+    
+    return mcp_success
 
 def main():
-    """Main verification function."""
+    """Entry point."""
     try:
         success = verify_task()
-        
         if success:
             print("\n🎉 Form interaction task verification: PASSED")
-            print("Both form functionality and MCP agent accuracy meet requirements")
             sys.exit(0)
         else:
             print("\n❌ Form interaction task verification: FAILED")
-            print("Either form functionality or MCP agent accuracy below requirements")
             sys.exit(1)
-            
     except Exception as e:
         print(f"\n💥 Verification error: {e}")
         sys.exit(1)
