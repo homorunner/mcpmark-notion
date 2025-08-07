@@ -85,6 +85,7 @@ class GitHubStateManager(BaseStateManager):
         # Initial state mapping - categories to initial state repositories
         self.initial_state_mapping = {
             "mixeval": "JinjieNi-MixEval",
+            "harmony": "openai-harmony",
         }
 
     # =========================================================================
@@ -178,6 +179,17 @@ class GitHubStateManager(BaseStateManager):
         # Phase 2 – push git history
         # ------------------------------------------------------------------
         repo_path = template_dir / "repo"
+        
+        # Remove .github directory locally before pushing
+        import shutil
+        github_dir = repo_path / ".github"
+        if github_dir.exists():
+            logger.info("[import] Removing .github directory before push …")
+            shutil.rmtree(github_dir)
+            # Commit the deletion
+            subprocess.run(["git", "-C", str(repo_path), "add", "-A"], check=True, capture_output=True)
+            subprocess.run(["git", "-C", str(repo_path), "commit", "-m", "Remove .github directory"], capture_output=True)
+        
         logger.info("[import] Pushing git history …")
         _push_repo(repo_path, owner, repo_name, needed_refs)
 
@@ -261,6 +273,10 @@ class GitHubStateManager(BaseStateManager):
             else:
                 skipped_prs += 1
         logger.info("[phase] Created %d PRs, skipped %d PRs", created_prs, skipped_prs)
+        
+        # Enable GitHub Actions after creating issues and PRs
+        logger.info("[import] Enabling GitHub Actions …")
+        self._enable_github_actions(owner, repo_name)
 
         logger.info("[import] Repository import complete: %s", html_url)
         return html_url
@@ -449,3 +465,24 @@ class GitHubStateManager(BaseStateManager):
             service_config["github_token"] = self.github_token
 
         return service_config
+    
+    def _enable_github_actions(self, owner: str, repo_name: str):
+        """Enable GitHub Actions for the repository using REST API."""
+        try:
+            # Enable GitHub Actions
+            url = f"https://api.github.com/repos/{owner}/{repo_name}/actions/permissions"
+            response = self.session.put(
+                url,
+                json={
+                    "enabled": True,
+                    "allowed_actions": "all"
+                }
+            )
+            
+            if response.status_code in [200, 204]:
+                logger.info("Successfully enabled GitHub Actions for %s/%s", owner, repo_name)
+            else:
+                logger.warning("Failed to enable GitHub Actions: %s %s", response.status_code, response.text)
+                
+        except Exception as e:
+            logger.error("Failed to enable GitHub Actions: %s", e)
