@@ -25,15 +25,27 @@ EXPECTED_DATA = {
 def get_submission_id_from_messages() -> int:
     """Extract submission ID from MCP agent messages."""
     messages_file = Path.cwd() / "messages.json"
+
+    # --- DEBUG: 输出路径和目录内容 ---
+    print(f"[DEBUG] CWD: {Path.cwd().resolve()}")
+    print(f"[DEBUG] Expecting messages.json at: {messages_file.resolve()}")
+    print(f"[DEBUG] Files in CWD: {[p.name for p in Path.cwd().iterdir()]}")
+    # ---------------------------------
+
     if not messages_file.exists():
         raise FileNotFoundError("No messages.json found")
-    
+
     try:
         with open(messages_file, 'r', encoding='utf-8') as f:
             messages = json.load(f)
+
+        # --- DEBUG: 读取成功后打印条目数 ---
+        print(f"[DEBUG] Loaded {len(messages)} messages from messages.json")
+        # ---------------------------------
+
     except Exception as e:
         raise Exception(f"Failed to read messages.json: {e}")
-    
+
     # Look for result page URL in agent messages
     for message in messages:
         if message.get("type") == "function_call_output":

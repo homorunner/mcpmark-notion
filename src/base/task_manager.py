@@ -256,7 +256,7 @@ class BaseTaskManager(ABC):
         """
         return subprocess.run(
             self._get_verification_command(task),
-            capture_output=True,
+            # capture_output=True,
             text=True,
             timeout=90
         )

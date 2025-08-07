@@ -192,7 +192,15 @@ class MCPEvaluator:
 
         # Execute with agent
         agent_result = self.agent.execute_sync(task_instruction)
-        
+
+        # --- NEW: write messages.json early so verify scripts can read it ---
+        early_messages_path = Path.cwd() / "messages.json"
+        self.results_reporter.save_messages_json(
+            agent_result.get("output", []),
+            early_messages_path,
+        )
+        # --------------------------------------------------------------------
+
         # Stage 3: Verify the task result using task manager
         logger.info("\n==================== Stage 3: Verifying Task =======================")
         result = self.task_manager.execute_task(task, agent_result)
@@ -200,6 +208,15 @@ class MCPEvaluator:
         # Stage 4: Clean up the temporary task state
         logger.info("\n==================== Stage 4: Cleaning Up =========================")
         self.state_manager.clean_up(task)
+
+        # --- NEW: 删除临时 messages.json -------------------------
+        try:
+            if early_messages_path.exists():
+                early_messages_path.unlink()
+                logger.debug("Deleted temporary messages.json")
+        except Exception as exc:
+            logger.warning("Failed to delete temporary messages.json: %s", exc)
+        # --------------------------------------------------------
 
         return result
     
