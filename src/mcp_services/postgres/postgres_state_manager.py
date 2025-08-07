@@ -27,7 +27,6 @@ class PostgresStateManager(BaseStateManager):
         database: str = None,
         username: str = None,
         password: str = None,
-        template_db: str = "mcpbench_template"
     ):
         """Initialize PostgreSQL state manager.
 
@@ -46,7 +45,6 @@ class PostgresStateManager(BaseStateManager):
         self.database = database
         self.username = username
         self.password = password
-        self.template_db = template_db
 
         # Connection parameters
         self.conn_params = {
@@ -81,9 +79,9 @@ class PostgresStateManager(BaseStateManager):
             db_name = f"mcpbench_{task.category}_{task.task_id}_{self._get_timestamp()}"
 
             # Create database from template if exists, otherwise empty
-            if self._database_exists(self.template_db):
-                self._create_database_from_template(db_name, self.template_db)
-                logger.info(f"Created database '{db_name}' from template '{self.template_db}'")
+            if self._database_exists(task.category):
+                self._create_database_from_template(db_name, task.category)
+                logger.info(f"Created database '{db_name}' from template '{task.category}'")
             else:
                 self._create_empty_database(db_name)
                 logger.info(f"Created empty database '{db_name}'")
@@ -93,7 +91,7 @@ class PostgresStateManager(BaseStateManager):
             self.track_resource('database', db_name, {'task': task.name})
 
             # Set up initial schema/data based on task category
-            self._setup_task_specific_data(db_name, task)
+            # self._setup_task_specific_data(db_name, task)
 
             return InitialStateInfo(
                 state_id=db_name,
@@ -166,6 +164,11 @@ class PostgresStateManager(BaseStateManager):
         conn.autocommit = True
         try:
             with conn.cursor() as cur:
+                cur.execute(sql.SQL("""
+                    SELECT pg_terminate_backend(pid)
+                    FROM pg_stat_activity
+                    WHERE datname = %s AND pid <> pg_backend_pid()
+                """), (template_db,))
                 cur.execute(sql.SQL(
                     "CREATE DATABASE {} WITH TEMPLATE {}"
                 ).format(

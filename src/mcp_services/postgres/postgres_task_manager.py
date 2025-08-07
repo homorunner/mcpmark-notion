@@ -10,7 +10,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from src.base.task_manager import BaseTask, BaseTaskManager
 from src.logger import get_logger
@@ -20,6 +20,7 @@ logger = get_logger(__name__)
 @dataclass
 class PostgresTask(BaseTask):
     """PostgreSQL-specific task with database information."""
+    task_name: str = ""
     database_name: Optional[str] = None
     database_url: Optional[str] = None
     expected_queries: Optional[List[str]] = None
@@ -44,6 +45,18 @@ class PostgresTaskManager(BaseTaskManager):
             task_class=PostgresTask,
             task_organization="file"  # PostgreSQL uses file-based tasks
         )
+        
+    def _create_task_from_files(self, category_name: str, task_files_info: Dict[str, Any]) -> Optional[PostgresTask]:
+        """Instantiate a `PostgresTask` from the dictionary returned by `_find_task_files`."""
+        
+        return PostgresTask(
+            task_instruction_path=task_files_info["instruction_path"],
+            task_verification_path=task_files_info["verification_path"],
+            service="postgres",
+            category=category_name,
+            task_id=task_files_info["task_name"].split('_')[-1],  # keep compatibility with BaseTask
+            task_name=task_files_info["task_name"],
+        )
 
     def _get_verification_command(self, task: PostgresTask) -> List[str]:
         """Get verification command with database info."""
@@ -61,7 +74,7 @@ class PostgresTaskManager(BaseTaskManager):
 
         # Pass database connection info to verification script
         if hasattr(task, 'database_name') and task.database_name:
-            env['POSTGRES_TEST_DB'] = task.database_name
+            env['POSTGRES_DATABASE'] = task.database_name
 
         if hasattr(task, 'database_url') and task.database_url:
             env['DATABASE_URL'] = task.database_url
