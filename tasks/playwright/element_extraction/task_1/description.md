@@ -1,41 +1,34 @@
-# Element Extraction Task
+Extract specific elements and data from a webpage using Playwright MCP tools.
 
-Use Playwright MCP tools to extract specific elements and data from a webpage.
-
-## Requirements:
+**Task Requirements:**
 
 1. Navigate to https://mcp-eval-website.vercel.app/extraction
-2. Discover and extract all main navigation links from the page:
-   - Identify each navigation link's URL and display text
-   - Count the total number of navigation links found
-3. Find and extract all page headings (h1, h2, h3, h4, h5, h6):
-   - Capture the heading text content
-   - Note the heading level (h1, h2, etc.)
-4. Locate and identify all HTTP method elements on the page:
-   - Look for buttons, links, or text displaying HTTP methods
-   - Extract method names (e.g., GET, POST, PUT, DELETE, etc.)
-5. Find all HTTP status code references on the page:
-   - Extract status codes and their descriptions
-   - Look for both numeric codes and status text
-6. Extract any JSON or code block examples displayed on the page:
-   - Capture code snippets, JSON objects, or formatted code blocks
-   - Preserve formatting where possible
-7. Generate a comprehensive structured report of all extracted data
 
-## Expected Outcomes:
+2. Extract and collect the following elements:
+   • **Navigation Links** – All `<a>` elements within `<nav>` tags, including both regular paths (e.g., `/forms`) and anchor links (e.g., `#http-methods`)
+   • **Page Headings** – All heading elements (h1, h2, h3, h4, h5, h6) with their level and text content
+   • **HTTP Methods** – All HTTP method names displayed on the page (GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS)
+   • **Status Codes** – All HTTP status codes with their descriptions (e.g., "200 OK - Request successful")
+   • **Code Blocks** – All JSON examples or code snippets displayed on the page
 
-- All navigation links are discovered and extracted with URLs and labels
-- Page headings are captured with their text and hierarchy level
-- HTTP method elements are identified and extracted
-- Status code sections are found and extracted
-- Code examples/JSON blocks are captured accurately
-- Structured data report is generated in organized format (JSON recommended)
+3. Output your findings as a JSON code block with this exact structure:
 
-## Success Criteria:
+```json
+{
+  "navigationLinks": [
+    {"text": "Link Text", "url": "/path/or#anchor"}
+  ],
+  "headings": [
+    {"level": "h1", "text": "Heading Text"}
+  ],
+  "httpMethods": ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
+  "statusCodes": [
+    {"code": "200", "description": "OK - Request successful"}
+  ],
+  "codeBlocks": [
+    "code block content as string"
+  ]
+}
+```
 
-- All discoverable navigation elements are correctly identified
-- All page headings are extracted without missing any
-- HTTP methods and status codes are comprehensively found
-- Code blocks are properly captured with formatting preserved
-- No duplicate elements in extraction results
-- Structured output is well-formatted, complete, and machine-readable
+**Important:** Output only the JSON code block. Use the exact field names shown above (camelCase).

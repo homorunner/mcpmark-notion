@@ -1,33 +1,50 @@
-# Web Navigation Task
+Navigate between web pages and extract information using Playwright MCP tools.
 
-Use Playwright MCP tools to navigate to a website and extract basic information.
-
-## Requirements:
+**Task Requirements:**
 
 1. Navigate to https://mcp-eval-website.vercel.app/navigation
+
 2. Extract the page title and main heading
-3. Discover and extract all available navigation links on the page:
-   - Identify each navigation link's URL and display text
-   - Count the total number of navigation links found
-4. Select one of the discovered navigation links (preferably a forms-related link if available)
-5. Navigate to that page by clicking the selected link
-6. Extract the page content, navigation history, and any structured data (JSON) if available
-7. Return to the navigation page and verify breadcrumb/history functionality
 
-## Expected Outcomes:
+3. Discover and extract all available navigation links on the page with their URLs and display text
 
-- Page title and headings are accurately extracted
-- All navigation links are discovered and extracted with their URLs and labels
-- Navigation between pages works correctly with proper redirects
-- Page content including structured data is captured
-- Navigation history/breadcrumbs are tracked and functional
-- All navigation is performed using Playwright tools
+4. Click on one of the discovered navigation links (preferably a forms-related link if available) to navigate to that page
 
-## Success Criteria:
+5. On the new page, extract:
+   • Page title and headings
+   • Any structured data (JSON) if available
+   • Page content summary
 
-- Successfully navigate between multiple pages
-- All discoverable navigation links are correctly identified and extracted
-- Page titles and content are extracted accurately
-- Navigation functionality works without browser errors or timeouts
-- Structured data (JSON) is captured if present on pages
-- Navigation history is properly tracked and breadcrumb functionality verified
+6. Return to the navigation page using browser back functionality
+
+7. Verify the navigation history/breadcrumb functionality is working
+
+8. Output your findings as a JSON code block with this exact structure:
+
+```json
+{
+  "initialPage": {
+    "title": "page title",
+    "heading": "main heading"
+  },
+  "navigationLinks": [
+    {"text": "Link Text", "url": "https://full-url-here"}
+  ],
+  "selectedLink": {
+    "text": "clicked link text",
+    "url": "https://clicked-url"
+  },
+  "visitedPage": {
+    "title": "visited page title",
+    "headings": ["heading 1", "heading 2"],
+    "structuredData": {},
+    "hasFormElements": true/false
+  },
+  "navigationHistory": {
+    "returnedToNavigation": true/false,
+    "breadcrumbWorking": true/false
+  }
+}
+```
+
+**Important:** Output only the JSON code block. Use the exact field names shown above.
