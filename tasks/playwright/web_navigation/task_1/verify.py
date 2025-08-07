@@ -174,77 +174,119 @@ def test_reverse_navigation() -> Dict[str, Any]:
 # MCP RESULT PARSING
 # =============================================================================
 
-def get_working_directory() -> Path:
-    """Get the working directory where messages.json should be."""
-    # For MCPBench, check current directory first
-    current_dir = Path.cwd()
-    if (current_dir / "messages.json").exists():
-        return current_dir
-    
-    # Fallback to environment variable
-    work_dir = os.getenv("PLAYWRIGHT_WORK_DIR", ".")
-    return Path(work_dir).resolve()
+# 新函数：统一从环境变量读取 messages.json
+def get_messages_path() -> Path:
+    env_path = os.getenv("MCP_MESSAGES")
+    if not env_path:
+        raise FileNotFoundError("Environment variable MCP_MESSAGES not set")
 
-def parse_mcp_agent_results(work_dir: Path) -> Dict[str, Any]:
+    p = Path(env_path)
+    print(f"[DEBUG] MCP_MESSAGES = {env_path}")
+    print(f"[DEBUG] messages.json exists: {p.exists()}")
+
+    if not p.exists():
+        raise FileNotFoundError(f"messages.json not found at {p}")
+    return p
+
+def parse_mcp_agent_results() -> Dict[str, Any]:
     """Extract what the MCP agent actually found from messages.json"""
-    messages_file = work_dir / "messages.json"
-    if not messages_file.exists():
-        return {"success": False, "error": "No messages.json found"}
-    
+    messages_file = get_messages_path()
+
+    with messages_file.open("r", encoding="utf-8") as f:
+        messages = json.load(f)
+    print(f"[DEBUG] Loaded {len(messages)} messages from messages.json")
+
     try:
-        with open(messages_file, 'r', encoding='utf-8') as f:
-            messages = json.load(f)
-    except (json.JSONDecodeError, IOError) as e:
-        return {"success": False, "error": f"Failed to read messages.json: {e}"}
+        agent_findings = {
+            "pages_visited": [],
+            "navigation_attempted": False,
+            "navigation_successful": False,
+            "forms_page_reached": False,
+            "reverse_navigation": False,
+            "nav_links_count": 0,
+            "selected_link": None
+        }
+        
+        # Parse agent's findings from conversation
+        for message in messages:
+            if message.get("role") == "assistant":
+                content = message.get("content", "")
+                
+                # Handle both string and list content formats
+                if isinstance(content, list):
+                    content = " ".join(
+                        item.get("text", "") if isinstance(item, dict) else str(item) 
+                        for item in content
+                    )
+                
+                content_str = str(content)
+                
+                # Look for JSON code block in the assistant's response
+                import re
+                json_pattern = r'```json\s*\n(.*?)\n\s*```'
+                json_matches = re.findall(json_pattern, content_str, re.DOTALL)
+                
+                if json_matches:
+                    try:
+                        data = json.loads(json_matches[-1])
+                        
+                        # Extract navigation links count
+                        if "navigationLinks" in data:
+                            agent_findings["nav_links_count"] = len(data["navigationLinks"])
+                            agent_findings["pages_visited"].append("navigation")
+                        
+                        # Extract selected link
+                        if "selectedLink" in data:
+                            agent_findings["selected_link"] = data["selectedLink"]
+                            agent_findings["navigation_attempted"] = True
+                            
+                            # Check if forms page was selected
+                            if "forms" in data["selectedLink"].get("url", "").lower():
+                                agent_findings["forms_page_reached"] = True
+                                agent_findings["navigation_successful"] = True
+                                agent_findings["pages_visited"].append("forms")
+                        
+                        # Check navigation history
+                        if "navigationHistory" in data:
+                            if data["navigationHistory"].get("returnedToNavigation", False):
+                                agent_findings["reverse_navigation"] = True
+                        
+                        print(f"[DEBUG] Successfully parsed JSON output")
+                        print(f"[DEBUG] - Navigation links found: {agent_findings['nav_links_count']}")
+                        print(f"[DEBUG] - Selected link: {agent_findings['selected_link']}")
+                        print(f"[DEBUG] - Navigation successful: {agent_findings['navigation_successful']}")
+                        print(f"[DEBUG] - Reverse navigation: {agent_findings['reverse_navigation']}")
+                                    
+                    except json.JSONDecodeError as e:
+                        print(f"[DEBUG] Failed to parse JSON: {e}")
+                        # Fall back to keyword-based parsing
+                        content_lower = content_str.lower()
+                        
+                        if "navigation" in content_lower and "mcp-eval-website" in content_lower:
+                            if "navigation" not in agent_findings["pages_visited"]:
+                                agent_findings["pages_visited"].append("navigation")
+                        
+                        if "forms" in content_lower and "mcp-eval-website" in content_lower:
+                            if "forms" not in agent_findings["pages_visited"]:
+                                agent_findings["pages_visited"].append("forms")
+                        
+                        if any(word in content_lower for word in ["navigate", "click", "link", "goto", "visit"]):
+                            agent_findings["navigation_attempted"] = True
+                        
+                        if ("forms" in content_lower and 
+                            any(word in content_lower for word in ["successful", "loaded", "found", "reached"])):
+                            agent_findings["forms_page_reached"] = True
+                            agent_findings["navigation_successful"] = True
+                        
+                        if ("navigation" in content_lower and "forms" in content_lower and 
+                            any(word in content_lower for word in ["back", "return", "reverse"])):
+                            agent_findings["reverse_navigation"] = True
+        
+        return {"success": True, "findings": agent_findings}
     
-    # Initialize findings
-    agent_findings = {
-        "pages_visited": [],
-        "navigation_attempted": False,
-        "navigation_successful": False,
-        "forms_page_reached": False,
-        "reverse_navigation": False
-    }
-    
-    # Parse agent's findings from conversation
-    for message in messages:
-        if message.get("role") == "assistant":
-            content = str(message.get("content", ""))
-            
-            # Handle both string and list content formats
-            if isinstance(message.get("content"), list):
-                content = " ".join(
-                    item.get("text", "") if isinstance(item, dict) else str(item) 
-                    for item in message.get("content", [])
-                )
-            
-            content_lower = content.lower()
-            
-            # Check for pages visited
-            if "navigation" in content_lower and "mcp-eval-website" in content_lower:
-                if "navigation" not in agent_findings["pages_visited"]:
-                    agent_findings["pages_visited"].append("navigation")
-            
-            if "forms" in content_lower and "mcp-eval-website" in content_lower:
-                if "forms" not in agent_findings["pages_visited"]:
-                    agent_findings["pages_visited"].append("forms")
-            
-            # Check for navigation attempts
-            if any(word in content_lower for word in ["navigate", "click", "link", "goto", "visit"]):
-                agent_findings["navigation_attempted"] = True
-            
-            # Check for successful navigation to forms
-            if ("forms" in content_lower and 
-                any(word in content_lower for word in ["successful", "loaded", "found", "reached"])):
-                agent_findings["forms_page_reached"] = True
-                agent_findings["navigation_successful"] = True
-            
-            # Check for reverse navigation (forms back to navigation)
-            if ("navigation" in content_lower and "forms" in content_lower and 
-                any(word in content_lower for word in ["back", "return", "reverse"])):
-                agent_findings["reverse_navigation"] = True
-    
-    return {"success": True, "findings": agent_findings}
+    except Exception as e:
+        print(f"[DEBUG] Error parsing MCP results: {e}")
+        return {"success": False, "error": f"Failed to parse agent results: {e}"}
 
 # =============================================================================
 # COMPARISON AND EVALUATION
@@ -253,6 +295,20 @@ def parse_mcp_agent_results(work_dir: Path) -> Dict[str, Any]:
 def compare_mcp_vs_independent(mcp_results: Dict, navigation_data: Dict, reverse_data: Dict) -> Dict[str, Any]:
     """Compare MCP agent findings with independent verification"""
     comparison = {}
+    
+    # Compare navigation links count
+    mcp_nav_links = mcp_results["findings"]["nav_links_count"]
+    actual_nav_links = navigation_data["navigation_page"]["nav_links_count"]
+    
+    # Allow some tolerance for nav links (might have duplicates or variations)
+    nav_links_accuracy = 1.0 if abs(mcp_nav_links - actual_nav_links) <= 4 else 0.5
+    
+    comparison["navigation_links"] = {
+        "mcp_count": mcp_nav_links,
+        "actual_count": actual_nav_links,
+        "accuracy": nav_links_accuracy,
+        "match": nav_links_accuracy >= 0.5
+    }
     
     # Compare pages visited
     mcp_pages = set(mcp_results["findings"]["pages_visited"])
@@ -414,10 +470,7 @@ def verify_task() -> bool:
     
     # Step 2: Parse MCP agent results
     print("\n🤖 Parsing MCP agent results...")
-    work_dir = get_working_directory()
-    print(f"📁 Working directory: {work_dir}")
-    
-    mcp_data = parse_mcp_agent_results(work_dir)
+    mcp_data = parse_mcp_agent_results()
     
     if not mcp_data["success"]:
         print(f"❌ Could not parse MCP results: {mcp_data.get('error')}")

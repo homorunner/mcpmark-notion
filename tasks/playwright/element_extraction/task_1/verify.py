@@ -94,90 +94,106 @@ def verify_website_content() -> Dict[str, Any]:
         print(f"❌ Error during Playwright verification: {e}")
         return {"success": False, "error": str(e)}
 
-# =============================================================================
-# MCP RESULT PARSING
-# =============================================================================
+# ------------------------------------------------------------------
+def get_messages_path() -> Path:
+    """
+    Return messages.json path from environment variable MCP_MESSAGES.
+    """
+    env_path = os.getenv("MCP_MESSAGES")
+    if not env_path:
+        raise FileNotFoundError("Environment variable MCP_MESSAGES not set")
 
-def get_working_directory() -> Path:
-    """Get the working directory where messages.json should be."""
-    # For MCPBench, check current directory first
-    current_dir = Path.cwd()
-    if (current_dir / "messages.json").exists():
-        return current_dir
-    
-    # Fallback to environment variable
-    work_dir = os.getenv("PLAYWRIGHT_WORK_DIR", ".")
-    return Path(work_dir).resolve()
+    p = Path(env_path)
 
-def parse_mcp_agent_results(work_dir: Path) -> Dict[str, Any]:
+    # --- DEBUG: 打印路径 & 文件存在性 --------------------------------
+    print(f"[DEBUG] MCP_MESSAGES = {env_path}")
+    print(f"[DEBUG] messages.json exists: {p.exists()}")
+    # ---------------------------------------------------------------
+
+    if not p.exists():
+        raise FileNotFoundError(f"messages.json not found at {p}")
+    return p
+# ------------------------------------------------------------------
+
+# 旧的 get_working_directory / locate_messages_json 等函数统统删除
+# parse_mcp_agent_results 里改用新函数:
+def parse_mcp_agent_results() -> Dict[str, Any]:
     """Extract what the MCP agent actually found from messages.json"""
-    messages_file = work_dir / "messages.json"
-    if not messages_file.exists():
-        return {"success": False, "error": "No messages.json found"}
+    messages_file = get_messages_path()   # 调用带调试信息的函数
+
+    with messages_file.open("r", encoding="utf-8") as f:
+        messages = json.load(f)
+    print(f"[DEBUG] Loaded {len(messages)} messages from messages.json")
     
     try:
-        with open(messages_file, 'r', encoding='utf-8') as f:
-            messages = json.load(f)
-    except (json.JSONDecodeError, IOError) as e:
-        return {"success": False, "error": f"Failed to read messages.json: {e}"}
+        # Initialize findings
+        agent_findings = {
+            "nav_links": [],
+            "headings": [],
+            "http_methods": [],
+            "status_codes": []
+        }
+        
+        # Parse agent's findings from conversation
+        for message in messages:
+            if message.get("role") == "assistant":
+                content = message.get("content", "")
+                
+                # Handle both string and list content formats
+                if isinstance(content, list):
+                    content = " ".join(
+                        item.get("text", "") if isinstance(item, dict) else str(item) 
+                        for item in content
+                    )
+                
+                content_str = str(content)
+                
+                # Look for JSON code block in the assistant's response
+                import re
+                json_pattern = r'```json\s*\n(.*?)\n\s*```'
+                json_matches = re.findall(json_pattern, content_str, re.DOTALL)
+                
+                if json_matches:
+                    # Found JSON code block, parse it
+                    try:
+                        data = json.loads(json_matches[-1])  # Use the last JSON block found
+                        
+                        # Extract navigation links
+                        if "navigationLinks" in data:
+                            for link in data["navigationLinks"]:
+                                if isinstance(link, dict) and "url" in link:
+                                    agent_findings["nav_links"].append(link["url"])
+                        
+                        # Extract headings
+                        if "headings" in data:
+                            for heading in data["headings"]:
+                                if isinstance(heading, dict) and "text" in heading:
+                                    agent_findings["headings"].append(heading["text"])
+                        
+                        # Extract HTTP methods
+                        if "httpMethods" in data:
+                            agent_findings["http_methods"] = data["httpMethods"]
+                        
+                        # Extract status codes
+                        if "statusCodes" in data:
+                            for code in data["statusCodes"]:
+                                if isinstance(code, dict) and "code" in code:
+                                    agent_findings["status_codes"].append(str(code["code"]))
+                                    
+                    except json.JSONDecodeError as e:
+                        print(f"[DEBUG] Failed to parse JSON: {e}")
+        
+        print(f"[DEBUG] Extracted findings:")
+        print(f"[DEBUG] - Nav links: {len(agent_findings['nav_links'])}")
+        print(f"[DEBUG] - Headings: {len(agent_findings['headings'])}")
+        print(f"[DEBUG] - HTTP methods: {len(agent_findings['http_methods'])}")
+        print(f"[DEBUG] - Status codes: {len(agent_findings['status_codes'])}")
+        
+        return {"success": True, "findings": agent_findings}
     
-    # Initialize findings
-    agent_findings = {
-        "nav_links": [],
-        "headings": [],
-        "http_methods": [],
-        "status_codes": []
-    }
-    
-    # Parse agent's findings from conversation
-    for message in messages:
-        if message.get("role") == "assistant":
-            content = str(message.get("content", ""))
-            
-            # Handle both string and list content formats
-            if isinstance(message.get("content"), list):
-                content = " ".join(
-                    item.get("text", "") if isinstance(item, dict) else str(item) 
-                    for item in message.get("content", [])
-                )
-            
-            # Extract navigation links
-            nav_link_patterns = [
-                r'/[a-zA-Z0-9/_-]+',  # /forms, /auth/basic, etc.
-                r'#[a-zA-Z0-9-]+',    # #http-methods, #status-codes, etc.
-            ]
-            for pattern in nav_link_patterns:
-                matches = re.findall(pattern, content)
-                for match in matches:
-                    if match not in agent_findings["nav_links"] and len(match) > 1:
-                        agent_findings["nav_links"].append(match)
-            
-            # Extract headings (look for quoted strings or title-case text)
-            heading_patterns = [
-                r'"([^"]{3,50})"',  # "Heading Text"
-                r"'([^']{3,50})'",  # 'Heading Text'
-                r'([A-Z][a-z\s&]{3,30})',  # Title Case Text
-            ]
-            for pattern in heading_patterns:
-                matches = re.findall(pattern, content)
-                for match in matches:
-                    clean_match = match.strip()
-                    if (clean_match not in agent_findings["headings"] and 
-                        len(clean_match) > 3 and 
-                        any(word in clean_match.lower() for word in ['test', 'http', 'service', 'method', 'status', 'response', 'navigation', 'json', 'form', 'link'])):
-                        agent_findings["headings"].append(clean_match)
-            
-            # Extract HTTP methods
-            for method in EXPECTED_HTTP_METHODS:
-                if method in content.upper() and method not in agent_findings["http_methods"]:
-                    agent_findings["http_methods"].append(method)
-            
-            # Extract status codes
-            for code in EXPECTED_STATUS_CODES:
-                if code in content and code not in agent_findings["status_codes"]:
-                    agent_findings["status_codes"].append(code)
-    
-    return {"success": True, "findings": agent_findings}
+    except Exception as e:
+        print(f"[DEBUG] Error parsing MCP results: {e}")
+        return {"success": False, "error": f"Failed to parse agent results: {e}"}
 
 # =============================================================================
 # COMPARISON AND EVALUATION
@@ -331,10 +347,10 @@ def verify_task() -> bool:
     
     # Step 2: Parse MCP agent results
     print("\n🤖 Parsing MCP agent results...")
-    work_dir = get_working_directory()
-    print(f"📁 Working directory: {work_dir}")
+    # work_dir = get_working_directory() # This line is removed
+    # print(f"📁 Working directory: {work_dir}") # This line is removed
     
-    mcp_data = parse_mcp_agent_results(work_dir)
+    mcp_data = parse_mcp_agent_results() # This line is changed
     
     if not mcp_data["success"]:
         print(f"❌ Could not parse MCP results: {mcp_data.get('error')}")
