@@ -193,30 +193,33 @@ class MCPEvaluator:
         # Execute with agent
         agent_result = self.agent.execute_sync(task_instruction)
 
-        # --- NEW: write messages.json early so verify scripts can read it ---
-        early_messages_path = Path.cwd() / "messages.json"
+        # ---------- NEW: 生成 task 结果目录并写 messages.json ----------
+        task_output_dir = self._get_task_output_dir(task)
+        task_output_dir.mkdir(parents=True, exist_ok=True)
+
+        early_messages_path = task_output_dir / "messages.json"
         self.results_reporter.save_messages_json(
             agent_result.get("output", []),
             early_messages_path,
         )
-        # --------------------------------------------------------------------
+        # --------------------------------------------------------------
 
         # Stage 3: Verify the task result using task manager
         logger.info("\n==================== Stage 3: Verifying Task =======================")
-        result = self.task_manager.execute_task(task, agent_result)
-        
+
+        # --- NEW: 临时切换工作目录，确保 verify.py 能读取 messages.json ---
+        import os
+        original_cwd = Path.cwd()
+        os.chdir(task_output_dir)
+        try:
+            result = self.task_manager.execute_task(task, agent_result)
+        finally:
+            os.chdir(original_cwd)   # 无论成功或异常都切回
+        # ----------------------------------------------------------------
+
         # Stage 4: Clean up the temporary task state
         logger.info("\n==================== Stage 4: Cleaning Up =========================")
         self.state_manager.clean_up(task)
-
-        # --- NEW: 删除临时 messages.json -------------------------
-        try:
-            if early_messages_path.exists():
-                early_messages_path.unlink()
-                logger.debug("Deleted temporary messages.json")
-        except Exception as exc:
-            logger.warning("Failed to delete temporary messages.json: %s", exc)
-        # --------------------------------------------------------
 
         return result
     
@@ -277,9 +280,16 @@ class MCPEvaluator:
 
             # Save messages.json (conversation trajectory)
             messages_path = task_output_dir / "messages.json"
-            # Extract messages from model_output if available
-            messages = task_result.model_output if hasattr(task_result, 'model_output') and task_result.model_output else []
-            self.results_reporter.save_messages_json(messages, messages_path)
+
+            # ↓↓↓ 修改处 ↓↓↓
+            if not messages_path.exists():           # 已经写过就跳过
+                messages = (
+                    task_result.model_output
+                    if getattr(task_result, "model_output", None)
+                    else []
+                )
+                self.results_reporter.save_messages_json(messages, messages_path)
+            # ↑↑↑ 修改结束 ↑↑↑
 
             # Save meta.json (all other metadata)
             meta_path = task_output_dir / "meta.json"
