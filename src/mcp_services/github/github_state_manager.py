@@ -180,18 +180,22 @@ class GitHubStateManager(BaseStateManager):
         # ------------------------------------------------------------------
         repo_path = template_dir / "repo"
         
-        # Remove .github directory locally before pushing
+        logger.info("[import] Pushing git history …")
+        _push_repo(repo_path, owner, repo_name, needed_refs)
+        
+        # Remove .github directory after pushing with a new commit
         import shutil
         github_dir = repo_path / ".github"
         if github_dir.exists():
-            logger.info("[import] Removing .github directory before push …")
+            logger.info("[import] Removing .github directory after push …")
             shutil.rmtree(github_dir)
             # Commit the deletion
             subprocess.run(["git", "-C", str(repo_path), "add", "-A"], check=True, capture_output=True)
             subprocess.run(["git", "-C", str(repo_path), "commit", "-m", "Remove .github directory"], capture_output=True)
-        
-        logger.info("[import] Pushing git history …")
-        _push_repo(repo_path, owner, repo_name, needed_refs)
+            # Push the new commit
+            token = self.github_token
+            dst_url = f"https://x-access-token:{token}@github.com/{owner}/{repo_name}.git"
+            subprocess.run(["git", "-C", str(repo_path), "push", dst_url], check=True, capture_output=True)
 
         # ------------------------------------------------------------------
         # Phase 3 – recreate issues & PRs
@@ -277,6 +281,10 @@ class GitHubStateManager(BaseStateManager):
         # Enable GitHub Actions after creating issues and PRs
         logger.info("[import] Enabling GitHub Actions …")
         self._enable_github_actions(owner, repo_name)
+        
+        # Disable notifications to prevent email spam
+        logger.info("[import] Disabling repository notifications …")
+        self._disable_repository_notifications(owner, repo_name)
 
         logger.info("[import] Repository import complete: %s", html_url)
         return html_url
@@ -486,3 +494,24 @@ class GitHubStateManager(BaseStateManager):
                 
         except Exception as e:
             logger.error("Failed to enable GitHub Actions: %s", e)
+    
+    def _disable_repository_notifications(self, owner: str, repo_name: str):
+        """Disable repository notifications to prevent email spam."""
+        try:
+            # Set repository notification subscription to ignore
+            url = f"https://api.github.com/repos/{owner}/{repo_name}/subscription"
+            response = self.session.put(
+                url,
+                json={
+                    "subscribed": False,
+                    "ignored": True
+                }
+            )
+            
+            if response.status_code in [200, 201]:
+                logger.info("Successfully disabled notifications for %s/%s", owner, repo_name)
+            else:
+                logger.warning("Failed to disable repository notifications: %s %s", response.status_code, response.text)
+                
+        except Exception as e:
+            logger.error("Failed to disable repository notifications: %s", e)
