@@ -192,12 +192,25 @@ class MCPEvaluator:
 
         # Execute with agent
         agent_result = self.agent.execute_sync(task_instruction)
-        
-        # Stage 3: Verify the task result using task manager
+
+        # ---------- 写 messages.json 到 task_output_dir ----------
+        task_output_dir = self._get_task_output_dir(task)
+        task_output_dir.mkdir(parents=True, exist_ok=True)
+        messages_path = task_output_dir / "messages.json"
+        self.results_reporter.save_messages_json(agent_result.get("output", []), messages_path)
+
+        # ---------- NEW: tmp environment varient ------------------------
+        import os
+        os.environ["MCP_MESSAGES"] = str(messages_path)
+
+        # Stage 3: Verify
         logger.info("\n==================== Stage 3: Verifying Task =======================")
-        result = self.task_manager.execute_task(task, agent_result)
-        
-        # Stage 4: Clean up the temporary task state
+        try:
+            result = self.task_manager.execute_task(task, agent_result)
+        finally:
+            os.environ.pop("MCP_MESSAGES", None)
+
+        # Stage 4: Clean up
         logger.info("\n==================== Stage 4: Cleaning Up =========================")
         self.state_manager.clean_up(task)
 
@@ -260,9 +273,16 @@ class MCPEvaluator:
 
             # Save messages.json (conversation trajectory)
             messages_path = task_output_dir / "messages.json"
-            # Extract messages from model_output if available
-            messages = task_result.model_output if hasattr(task_result, 'model_output') and task_result.model_output else []
-            self.results_reporter.save_messages_json(messages, messages_path)
+
+            # ↓↓↓ 修改处 ↓↓↓
+            if not messages_path.exists():           # 已经写过就跳过
+                messages = (
+                    task_result.model_output
+                    if getattr(task_result, "model_output", None)
+                    else []
+                )
+                self.results_reporter.save_messages_json(messages, messages_path)
+            # ↑↑↑ 修改结束 ↑↑↑
 
             # Save meta.json (all other metadata)
             meta_path = task_output_dir / "meta.json"
