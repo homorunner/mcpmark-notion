@@ -193,31 +193,24 @@ class MCPEvaluator:
         # Execute with agent
         agent_result = self.agent.execute_sync(task_instruction)
 
-        # ---------- NEW: 生成 task 结果目录并写 messages.json ----------
+        # ---------- 写 messages.json 到 task_output_dir ----------
         task_output_dir = self._get_task_output_dir(task)
         task_output_dir.mkdir(parents=True, exist_ok=True)
+        messages_path = task_output_dir / "messages.json"
+        self.results_reporter.save_messages_json(agent_result.get("output", []), messages_path)
 
-        early_messages_path = task_output_dir / "messages.json"
-        self.results_reporter.save_messages_json(
-            agent_result.get("output", []),
-            early_messages_path,
-        )
-        # --------------------------------------------------------------
-
-        # Stage 3: Verify the task result using task manager
-        logger.info("\n==================== Stage 3: Verifying Task =======================")
-
-        # --- NEW: 临时切换工作目录，确保 verify.py 能读取 messages.json ---
+        # ---------- NEW: tmp environment varient ------------------------
         import os
-        original_cwd = Path.cwd()
-        os.chdir(task_output_dir)
+        os.environ["MCP_MESSAGES"] = str(messages_path)
+
+        # Stage 3: Verify
+        logger.info("\n==================== Stage 3: Verifying Task =======================")
         try:
             result = self.task_manager.execute_task(task, agent_result)
         finally:
-            os.chdir(original_cwd)   # 无论成功或异常都切回
-        # ----------------------------------------------------------------
+            os.environ.pop("MCP_MESSAGES", None)
 
-        # Stage 4: Clean up the temporary task state
+        # Stage 4: Clean up
         logger.info("\n==================== Stage 4: Cleaning Up =========================")
         self.state_manager.clean_up(task)
 

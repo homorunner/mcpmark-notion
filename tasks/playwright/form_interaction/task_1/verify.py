@@ -11,6 +11,7 @@ import re
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 from typing import Dict, Any
+import os
 
 # Expected form data from task description
 EXPECTED_DATA = {
@@ -22,29 +23,34 @@ EXPECTED_DATA = {
     "comments": "This is a test submission for MCPBench"
 }
 
+def locate_messages_json() -> Path:
+    """
+    Search for messages.json starting at CWD and walking up parent directories.
+    Returns the Path if found, otherwise raises FileNotFoundError.
+    """
+    cur = Path.cwd().resolve()
+    for path in [cur, *cur.parents]:
+        candidate = path / "messages.json"
+        if candidate.exists():
+            return candidate
+    raise FileNotFoundError("No messages.json found in current or parent directories")
+
 def get_submission_id_from_messages() -> int:
     """Extract submission ID from MCP agent messages."""
-    messages_file = Path.cwd() / "messages.json"
+    env_path = os.getenv("MCP_MESSAGES")
+    if not env_path:
+        raise FileNotFoundError("Environment variable MCP_MESSAGES not set")
 
-    # --- DEBUG: 输出路径和目录内容 ---
-    print(f"[DEBUG] CWD: {Path.cwd().resolve()}")
-    print(f"[DEBUG] Expecting messages.json at: {messages_file.resolve()}")
-    print(f"[DEBUG] Files in CWD: {[p.name for p in Path.cwd().iterdir()]}")
-    # ---------------------------------
-
+    messages_file = Path(env_path)
     if not messages_file.exists():
-        raise FileNotFoundError("No messages.json found")
+        raise FileNotFoundError(f"messages.json not found at {messages_file}")
 
-    try:
-        with open(messages_file, 'r', encoding='utf-8') as f:
-            messages = json.load(f)
+    # DEBUG（可选）
+    print(f"[DEBUG] Using messages.json from: {messages_file}")
 
-        # --- DEBUG: 读取成功后打印条目数 ---
-        print(f"[DEBUG] Loaded {len(messages)} messages from messages.json")
-        # ---------------------------------
-
-    except Exception as e:
-        raise Exception(f"Failed to read messages.json: {e}")
+    with messages_file.open("r", encoding="utf-8") as f:
+        messages = json.load(f)
+    print(f"[DEBUG] Loaded {len(messages)} messages from messages.json")
 
     # Look for result page URL in agent messages
     for message in messages:
