@@ -172,22 +172,26 @@ def export_repository(
 
     # Issues (non-PR)
     issues = []
-    for itm in _paginate(
-            f"{_API_ROOT}/repos/{owner}/{repo}/issues",
-            extra_params={"sort": "created", "direction": "desc"}):
-        if "pull_request" in itm:
-            continue
-        issues.append({
-            "title": itm.get("title"),
-            "body": itm.get("body", ""),
-            "labels": [lbl.get("name") for lbl in itm.get("labels", [])],
-            "state": itm.get("state", "open"),  # Store issue state
-            "number": itm.get("number"),  # Store issue number for reference
-            "comments": _fetch_issue_comments(itm.get("number")),
-        })
+    # If max_issues is 0, skip fetching issues entirely
+    if max_issues == 0:
+        logger.info("[export] Skipping issues (max_issues=0)")
+    else:
+        for itm in _paginate(
+                f"{_API_ROOT}/repos/{owner}/{repo}/issues",
+                extra_params={"sort": "created", "direction": "desc"}):
+            if "pull_request" in itm:
+                continue
+            issues.append({
+                "title": itm.get("title"),
+                "body": itm.get("body", ""),
+                "labels": [lbl.get("name") for lbl in itm.get("labels", [])],
+                "state": itm.get("state", "open"),  # Store issue state
+                "number": itm.get("number"),  # Store issue number for reference
+                "comments": _fetch_issue_comments(itm.get("number")),
+            })
 
-        if max_issues and len(issues) >= max_issues:
-            break
+            if max_issues is not None and len(issues) >= max_issues:
+                break
     (repo_dir / "issues.json").write_text(json.dumps(issues, indent=2))
     logger.info("[export] Saved %d issues", len(issues))
 
@@ -196,65 +200,69 @@ def export_repository(
     pr_head_refs: set[str] = set()
     fork_pr_branches: dict[str, dict] = {}  # Maps PR branch names to fork info
 
-    for pr in _paginate(
-            f"{_API_ROOT}/repos/{owner}/{repo}/pulls",
-            state="open",
-            extra_params={"sort": "created", "direction": "desc"}):
-        pr_number = pr.get("number")
-        head = pr.get("head", {})
-        if head is None:
-            logger.warning("PR #%s has no head (deleted fork), skipping", pr_number)
-            continue  # skip PRs with missing head (deleted fork)
+    # If max_pulls is 0, skip fetching pull requests entirely
+    if max_pulls == 0:
+        logger.info("[export] Skipping pull requests (max_pulls=0)")
+    else:
+        for pr in _paginate(
+                f"{_API_ROOT}/repos/{owner}/{repo}/pulls",
+                state="open",
+                extra_params={"sort": "created", "direction": "desc"}):
+            pr_number = pr.get("number")
+            head = pr.get("head", {})
+            if head is None:
+                logger.warning("PR #%s has no head (deleted fork), skipping", pr_number)
+                continue  # skip PRs with missing head (deleted fork)
 
-        head_repo = head.get("repo")
-        head_ref = head.get("ref")
-        head_sha = head.get("sha")
+            head_repo = head.get("repo")
+            head_ref = head.get("ref")
+            head_sha = head.get("sha")
 
-        if head_repo is None:
-            logger.warning("PR #%s source repo was deleted, skipping", pr_number)
-            continue  # skip PRs where source repo was deleted
+            if head_repo is None:
+                logger.warning("PR #%s source repo was deleted, skipping", pr_number)
+                continue  # skip PRs where source repo was deleted
 
-        head_repo_full = head_repo.get("full_name")
-        is_from_fork = head_repo_full != f"{owner}/{repo}"
+            head_repo_full = head_repo.get("full_name")
+            is_from_fork = head_repo_full != f"{owner}/{repo}"
 
-        # Create PR data with fork information
-        pr_data = {
-            "number": pr_number,
-            "title": pr.get("title"),
-            "body": pr.get("body", ""),
-            "head": head_ref,
-            "base": pr.get("base", {}).get("ref"),
-            "is_from_fork": is_from_fork,
-        }
-
-        if is_from_fork:
-            # Store additional metadata for forked PRs
-            pr_data["fork_owner"] = head_repo.get("owner", {}).get("login")
-            pr_data["fork_repo"] = head_repo.get("name")
-            pr_data["head_sha"] = head_sha
-
-            # Create a unique branch name for this forked PR
-            fork_branch_name = f"pr/{pr_number}-{pr_data['fork_owner']}-{head_ref}"
-            pr_data["local_branch"] = fork_branch_name
-
-            fork_pr_branches[fork_branch_name] = {
-                "clone_url": head_repo.get("clone_url"),
-                "ref": head_ref,
-                "sha": head_sha,
-                "pr_number": pr_number,
+            # Create PR data with fork information
+            pr_data = {
+                "number": pr_number,
+                "title": pr.get("title"),
+                "body": pr.get("body", ""),
+                "head": head_ref,
+                "base": pr.get("base", {}).get("ref"),
+                "is_from_fork": is_from_fork,
             }
-        else:
-            # For non-fork PRs, keep the original branch reference
-            pr_head_refs.add(head_ref)
 
-        # Attach comments
-        pr_data["comments"] = _fetch_issue_comments(pr_number)
-        pr_data["review_comments"] = _fetch_review_comments(pr_number)
+            if is_from_fork:
+                # Store additional metadata for forked PRs
+                pr_data["fork_owner"] = head_repo.get("owner", {}).get("login")
+                pr_data["fork_repo"] = head_repo.get("name")
+                pr_data["head_sha"] = head_sha
 
-        pulls.append(pr_data)
+                # Create a unique branch name for this forked PR
+                fork_branch_name = f"pr/{pr_number}-{pr_data['fork_owner']}-{head_ref}"
+                pr_data["local_branch"] = fork_branch_name
 
-        if max_pulls and len(pulls) >= max_pulls:
-            break
+                fork_pr_branches[fork_branch_name] = {
+                    "clone_url": head_repo.get("clone_url"),
+                    "ref": head_ref,
+                    "sha": head_sha,
+                    "pr_number": pr_number,
+                }
+            else:
+                # For non-fork PRs, keep the original branch reference
+                pr_head_refs.add(head_ref)
+
+            # Attach comments
+            pr_data["comments"] = _fetch_issue_comments(pr_number)
+            pr_data["review_comments"] = _fetch_review_comments(pr_number)
+
+            pulls.append(pr_data)
+
+            if max_pulls is not None and len(pulls) >= max_pulls:
+                break
     (repo_dir / "pulls.json").write_text(json.dumps(pulls, indent=2))
     logger.info("[export] Saved %d pull requests", len(pulls))
 

@@ -16,6 +16,7 @@ from src.logger import get_logger
 
 logger = get_logger(__name__)
 
+
 class GitHubStateManager(BaseStateManager):
     """
     Manages GitHub repository state for task evaluation.
@@ -25,7 +26,7 @@ class GitHubStateManager(BaseStateManager):
         self,
         github_token: str,
         # Name of the evaluation organisation / user where temporary test repositories are created
-        eval_org: str ="mcpleague-eval",
+        eval_org: str = "mcpleague-eval",
         # Local directory that stores *exported* repository templates (produced by repo_exporter.py)
         templates_root: str = "./github_state",
     ):
@@ -51,31 +52,39 @@ class GitHubStateManager(BaseStateManager):
 
         # Set up HTTP session for GitHub API
         self.session = requests.Session()
-        self.session.headers.update({
-            "Authorization": f"Bearer {github_token}",
-            "Accept": "application/vnd.github.v3+json",
-            "X-GitHub-Api-Version": "2022-11-28",
-            "User-Agent": "MCPBench/1.0"
-        })
+        self.session.headers.update(
+            {
+                "Authorization": f"Bearer {github_token}",
+                "Accept": "application/vnd.github.v3+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+                "User-Agent": "MCPBench/1.0",
+            }
+        )
 
         # Validate GitHub configuration during initialization
         try:
             response = self.session.get("https://api.github.com/user")
             if response.status_code != 200:
-                raise ValueError(f"Invalid GitHub token: {response.status_code} {response.text}")
+                raise ValueError(
+                    f"Invalid GitHub token: {response.status_code} {response.text}"
+                )
 
             user_info = response.json()
             logger.info(f"GitHub authenticated as: {user_info['login']}")
 
             # Check if evaluation organisation exists (optional)
             if self.eval_org:
-                org_response = self.session.get(f"https://api.github.com/orgs/{self.eval_org}")
+                org_response = self.session.get(
+                    f"https://api.github.com/orgs/{self.eval_org}"
+                )
                 if org_response.status_code == 200:
                     logger.info(f"Using evaluation organisation: {self.eval_org}")
                 else:
-                    logger.warning(f"Evaluation organisation {self.eval_org} not accessible, using user account")
+                    logger.warning(
+                        f"Evaluation organisation {self.eval_org} not accessible, using user account"
+                    )
                     # Fall back to user account
-                    self.eval_org = user_info['login']
+                    self.eval_org = user_info["login"]
 
             logger.info("GitHub state manager initialized successfully")
 
@@ -86,6 +95,7 @@ class GitHubStateManager(BaseStateManager):
         self.initial_state_mapping = {
             "mixeval": "JinjieNi-MixEval",
             "harmony": "openai-harmony",
+            "claude-code": "anthropics-claude-code",
         }
 
     # =========================================================================
@@ -96,7 +106,9 @@ class GitHubStateManager(BaseStateManager):
     # Internal helper – template importer (replicates repo_importer logic)
     # ---------------------------------------------------------------------
 
-    def _import_template_repo(self, template_dir: Path, owner: str, private: bool = True) -> str:
+    def _import_template_repo(
+        self, template_dir: Path, owner: str, private: bool = True
+    ) -> str:
         """Import repository from local template directory to GitHub (simplified)."""
 
         import json
@@ -108,31 +120,56 @@ class GitHubStateManager(BaseStateManager):
         # ------------------------------------------------------------------
 
         def _list_refs(repo_dir: str) -> list[str]:
-            result = subprocess.run([
-                "git", "-C", repo_dir, "for-each-ref", "--format=%(refname)"
-            ], check=True, capture_output=True, text=True)
+            result = subprocess.run(
+                ["git", "-C", repo_dir, "for-each-ref", "--format=%(refname)"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
             return result.stdout.strip().splitlines()
 
-        def _push_repo(repo_path: Path, repo_owner: str, repo_name: str, required_refs: list[str]):
+        def _push_repo(
+            repo_path: Path, repo_owner: str, repo_name: str, required_refs: list[str]
+        ):
             """Push repo to GitHub: try mirror, else per-ref."""
             token = self.github_token
             dst_url = f"https://x-access-token:{token}@github.com/{repo_owner}/{repo_name}.git"
 
             try:
-                subprocess.run(["git", "-C", str(repo_path), "push", "--mirror", dst_url], check=True, capture_output=True)
+                subprocess.run(
+                    ["git", "-C", str(repo_path), "push", "--mirror", dst_url],
+                    check=True,
+                    capture_output=True,
+                )
                 return
             except subprocess.CalledProcessError as err:
-                logger.warning("[push] Mirror push failed – falling back: %s", err.stderr.decode(errors="ignore"))
+                logger.warning(
+                    "[push] Mirror push failed – falling back: %s",
+                    err.stderr.decode(errors="ignore"),
+                )
 
             refs = required_refs or _list_refs(str(repo_path))
             for ref in refs:
                 for attempt in range(3):
                     try:
-                        subprocess.run(["git", "-C", str(repo_path), "push", dst_url, f"{ref}:{ref}"], check=True, capture_output=True)
+                        subprocess.run(
+                            [
+                                "git",
+                                "-C",
+                                str(repo_path),
+                                "push",
+                                dst_url,
+                                f"{ref}:{ref}",
+                            ],
+                            check=True,
+                            capture_output=True,
+                        )
                         break
                     except subprocess.CalledProcessError as ref_err:
                         if attempt == 2:
-                            raise RuntimeError(f"Failed to push ref {ref}: {ref_err.stderr}") from ref_err
+                            raise RuntimeError(
+                                f"Failed to push ref {ref}: {ref_err.stderr}"
+                            ) from ref_err
                         time.sleep(2 * (attempt + 1))
 
         # ------------------------------------------------------------------
@@ -144,8 +181,16 @@ class GitHubStateManager(BaseStateManager):
         default_branch = meta.get("default_branch", "main")
 
         pulls_data = json.loads((template_dir / "pulls.json").read_text())
-        fork_branches = [pr["local_branch"] for pr in pulls_data if pr.get("is_from_fork") and "local_branch" in pr]
-        needed_refs = [f"refs/heads/{default_branch}"] + [f"refs/heads/{h}" for h in pr_head_refs] + [f"refs/heads/{b}" for b in fork_branches]
+        fork_branches = [
+            pr["local_branch"]
+            for pr in pulls_data
+            if pr.get("is_from_fork") and "local_branch" in pr
+        ]
+        needed_refs = (
+            [f"refs/heads/{default_branch}"]
+            + [f"refs/heads/{h}" for h in pr_head_refs]
+            + [f"refs/heads/{b}" for b in fork_branches]
+        )
 
         # ------------------------------------------------------------------
         # Phase 1 – create empty repo under owner
@@ -161,7 +206,11 @@ class GitHubStateManager(BaseStateManager):
         }
 
         auth_user = self._get_authenticated_user()
-        create_url = f"https://api.github.com/user/repos" if owner == auth_user else f"https://api.github.com/orgs/{owner}/repos"
+        create_url = (
+            f"https://api.github.com/user/repos"
+            if owner == auth_user
+            else f"https://api.github.com/orgs/{owner}/repos"
+        )
 
         resp = self._request_with_retry("POST", create_url, json=create_payload)
         if resp.status_code == 422 and "name already exists" in resp.text:
@@ -179,23 +228,44 @@ class GitHubStateManager(BaseStateManager):
         # Phase 2 – push git history
         # ------------------------------------------------------------------
         repo_path = template_dir / "repo"
-        
+
         logger.info("[import] Pushing git history …")
         _push_repo(repo_path, owner, repo_name, needed_refs)
-        
+
         # Remove .github directory after pushing with a new commit
         import shutil
+
         github_dir = repo_path / ".github"
         if github_dir.exists():
             logger.info("[import] Removing .github directory after push …")
             shutil.rmtree(github_dir)
             # Commit the deletion
-            subprocess.run(["git", "-C", str(repo_path), "add", "-A"], check=True, capture_output=True)
-            subprocess.run(["git", "-C", str(repo_path), "commit", "-m", "Remove .github directory"], capture_output=True)
+            subprocess.run(
+                ["git", "-C", str(repo_path), "add", "-A"],
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(repo_path),
+                    "commit",
+                    "-m",
+                    "Remove .github directory",
+                ],
+                capture_output=True,
+            )
             # Push the new commit
             token = self.github_token
-            dst_url = f"https://x-access-token:{token}@github.com/{owner}/{repo_name}.git"
-            subprocess.run(["git", "-C", str(repo_path), "push", dst_url], check=True, capture_output=True)
+            dst_url = (
+                f"https://x-access-token:{token}@github.com/{owner}/{repo_name}.git"
+            )
+            subprocess.run(
+                ["git", "-C", str(repo_path), "push", dst_url],
+                check=True,
+                capture_output=True,
+            )
 
         # ------------------------------------------------------------------
         # Phase 3 – recreate issues & PRs
@@ -212,7 +282,7 @@ class GitHubStateManager(BaseStateManager):
             data = {
                 "title": item["title"],
                 "body": item.get("body", ""),
-                "labels": item.get("labels", [])
+                "labels": item.get("labels", []),
             }
             r = self._request_with_retry(
                 "POST",
@@ -259,8 +329,12 @@ class GitHubStateManager(BaseStateManager):
             if new_no:
                 created_issues += 1
                 for c in itm.get("comments", []):
-                    _create_comment(new_no, f"*Original author: @{c['user']}*\n\n{c['body']}")
-        logger.info("[phase] Created %d out of %d issues", created_issues, len(issues_data))
+                    _create_comment(
+                        new_no, f"*Original author: @{c['user']}*\n\n{c['body']}"
+                    )
+        logger.info(
+            "[phase] Created %d out of %d issues", created_issues, len(issues_data)
+        )
 
         # Pull requests
         logger.info("[phase] Re-creating pull requests …")
@@ -271,17 +345,22 @@ class GitHubStateManager(BaseStateManager):
             if new_pr_no:
                 created_prs += 1
                 for c in pr.get("comments", []):
-                    _create_comment(new_pr_no, f"*Original author: @{c['user']}*\n\n{c['body']}")
+                    _create_comment(
+                        new_pr_no, f"*Original author: @{c['user']}*\n\n{c['body']}"
+                    )
                 for rc in pr.get("review_comments", []):
-                    _create_comment(new_pr_no, f"*Original author: @{rc['user']}* (review)\n\n{rc['body']}")
+                    _create_comment(
+                        new_pr_no,
+                        f"*Original author: @{rc['user']}* (review)\n\n{rc['body']}",
+                    )
             else:
                 skipped_prs += 1
         logger.info("[phase] Created %d PRs, skipped %d PRs", created_prs, skipped_prs)
-        
+
         # Enable GitHub Actions after creating issues and PRs
         logger.info("[import] Enabling GitHub Actions …")
         self._enable_github_actions(owner, repo_name)
-        
+
         # Disable notifications to prevent email spam
         logger.info("[import] Disabling repository notifications …")
         self._disable_repository_notifications(owner, repo_name)
@@ -293,7 +372,7 @@ class GitHubStateManager(BaseStateManager):
     # Public – create initial state using local template import
     # ---------------------------------------------------------------------
 
-    def _create_initial_state(self, task: 'BaseTask') -> Optional[InitialStateInfo]:
+    def _create_initial_state(self, task: "BaseTask") -> Optional[InitialStateInfo]:
         """
         Set up GitHub environment for a specific task.
 
@@ -307,7 +386,9 @@ class GitHubStateManager(BaseStateManager):
 
             template_name = self.select_initial_state_for_task(task.category)
             if template_name is None:
-                raise RuntimeError(f"No template configured for task category: {task.category}")
+                raise RuntimeError(
+                    f"No template configured for task category: {task.category}"
+                )
 
             template_dir = (self.templates_root / template_name).resolve()
             if not template_dir.exists():
@@ -364,7 +445,9 @@ class GitHubStateManager(BaseStateManager):
                 self._delete_repository(owner, repo_name)
                 logger.info("Deleted repository: %s/%s", owner, repo_name)
             except Exception as err:
-                logger.error("Failed to delete repository %s/%s: %s", owner, repo_name, err)
+                logger.error(
+                    "Failed to delete repository %s/%s: %s", owner, repo_name, err
+                )
                 success = False
 
         self._repos_to_cleanup.clear()
@@ -380,10 +463,15 @@ class GitHubStateManager(BaseStateManager):
         response = self.session.delete(delete_url)
 
         if response.status_code not in [200, 204]:
-            logger.warning(f"Failed to delete repository {owner}/{repo_name}: {response.text}")
-            raise Exception(f"Failed to delete repository {owner}/{repo_name}: {response.status_code} {response.text}")
+            logger.warning(
+                f"Failed to delete repository {owner}/{repo_name}: {response.text}"
+            )
+            raise Exception(
+                f"Failed to delete repository {owner}/{repo_name}: {response.status_code} {response.text}"
+            )
         else:
             logger.info(f"Successfully deleted repository {owner}/{repo_name}")
+
     # ---------------------------------------------------------------------
     # Helper utilities (organisation vs user)
     # ---------------------------------------------------------------------
@@ -402,7 +490,15 @@ class GitHubStateManager(BaseStateManager):
     # ---------------------------------------------------------------------
     # Generic request helper with rate-limit (403) retry handling
     # ---------------------------------------------------------------------
-    def _request_with_retry(self, method: str, url: str, *, max_retries: int = 2, sleep_seconds: int = 120, **kwargs):
+    def _request_with_retry(
+        self,
+        method: str,
+        url: str,
+        *,
+        max_retries: int = 2,
+        sleep_seconds: int = 120,
+        **kwargs,
+    ):
         """Send a GitHub API request with basic rate-limit handling.
 
         If a request receives HTTP 403 (rate limit) we will sleep for
@@ -446,10 +542,11 @@ class GitHubStateManager(BaseStateManager):
         """Extract owner and repo name from GitHub URL."""
         try:
             from urllib.parse import urlparse
+
             # Support https://github.com/owner/repo format
             if "github.com" in repo_url:
-                path = urlparse(repo_url).path.strip('/')
-                parts = path.split('/')
+                path = urlparse(repo_url).path.strip("/")
+                parts = path.split("/")
                 if len(parts) >= 2:
                     return parts[0], parts[1]
 
@@ -473,45 +570,58 @@ class GitHubStateManager(BaseStateManager):
             service_config["github_token"] = self.github_token
 
         return service_config
-    
+
     def _enable_github_actions(self, owner: str, repo_name: str):
         """Enable GitHub Actions for the repository using REST API."""
         try:
             # Enable GitHub Actions
-            url = f"https://api.github.com/repos/{owner}/{repo_name}/actions/permissions"
-            response = self.session.put(
-                url,
-                json={
-                    "enabled": True,
-                    "allowed_actions": "all"
-                }
+            url = (
+                f"https://api.github.com/repos/{owner}/{repo_name}/actions/permissions"
             )
-            
+            response = self.session.put(
+                url, json={"enabled": True, "allowed_actions": "all"}
+            )
+
             if response.status_code in [200, 204]:
-                logger.info("Successfully enabled GitHub Actions for %s/%s", owner, repo_name)
+                logger.info(
+                    "Successfully enabled GitHub Actions for %s/%s", owner, repo_name
+                )
             else:
-                logger.warning("Failed to enable GitHub Actions: %s %s", response.status_code, response.text)
-                
+                logger.warning(
+                    "Failed to enable GitHub Actions: %s %s",
+                    response.status_code,
+                    response.text,
+                )
+
         except Exception as e:
             logger.error("Failed to enable GitHub Actions: %s", e)
-    
+
     def _disable_repository_notifications(self, owner: str, repo_name: str):
         """Disable repository notifications to prevent email spam."""
         try:
             # Set repository notification subscription to ignore
             url = f"https://api.github.com/repos/{owner}/{repo_name}/subscription"
             response = self.session.put(
-                url,
-                json={
-                    "subscribed": False,
-                    "ignored": True
-                }
+                url, json={"subscribed": False, "ignored": True}
             )
-            
+
             if response.status_code in [200, 201]:
-                logger.info("Successfully disabled notifications for %s/%s", owner, repo_name)
+                logger.info(
+                    "Successfully disabled notifications for %s/%s", owner, repo_name
+                )
+            elif response.status_code == 403:
+                # This is expected if the token doesn't have notifications scope
+                logger.debug(
+                    "Cannot disable notifications for %s/%s (token lacks notifications scope - this is OK)",
+                    owner,
+                    repo_name,
+                )
             else:
-                logger.warning("Failed to disable repository notifications: %s %s", response.status_code, response.text)
-                
+                logger.warning(
+                    "Failed to disable repository notifications: %s %s",
+                    response.status_code,
+                    response.text,
+                )
+
         except Exception as e:
             logger.error("Failed to disable repository notifications: %s", e)
