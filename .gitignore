@@ -234,4 +234,4 @@ __marimo__/
 
 # MCPBench backup directories
 .mcpbench_backups/
-test_environments/threestudio/
+test_environments/
