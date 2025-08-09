@@ -235,8 +235,11 @@ class MCPAgent:
 
             return MCPServerStdio(
                 params={
-                    "command": "npx",
-                    "args": ["-y", "@modelcontextprotocol/server-postgres", database_url],
+                    "command": "pipx",
+                    "args": ["run", "postgres-mcp", "--access-mode=unrestricted"],
+                    "env": {
+                        "DATABASE_URI": database_url,
+                    },
                 },
                 client_session_timeout_seconds=120,
                 cache_tools_list=True,
