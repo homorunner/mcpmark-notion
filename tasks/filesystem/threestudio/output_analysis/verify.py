@@ -6,18 +6,14 @@ Verification script for ThreeStudio Task 2: Analyze Zero123 Guidance Output Stru
 import sys
 from pathlib import Path
 import re
+import os
 
 def get_test_directory() -> Path:
-    """Get the test directory using environment variable or fallback to relative path."""
-    import os
-    # First try to use environment variable (which points to backup directory)
-    test_dir = os.getenv("FILESYSTEM_TEST_DIR")
-    if test_dir:
-        return Path(test_dir)
-    
-    # Fallback to relative path for backward compatibility
-    script_dir = Path(__file__).parent
-    return script_dir.parent.parent.parent.parent / "test_environments/threestudio"
+    """Get the test directory from FILESYSTEM_TEST_DIR env var."""
+    test_root = os.environ.get("FILESYSTEM_TEST_DIR")
+    if not test_root:
+        raise ValueError("FILESYSTEM_TEST_DIR environment variable is required")
+    return Path(test_root)
 
 def verify_answer_file_exists(test_dir: Path) -> bool:
     """Verify that the answer.txt file exists."""
