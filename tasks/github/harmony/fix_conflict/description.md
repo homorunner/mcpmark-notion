@@ -17,7 +17,7 @@ Create a new branch and PR to add the missing file that the conflicted PR needs.
 Merge the infrastructure PR to main.
 
 **Step 4: Add Comment to Original PR**
-Add a comment to the original conflicted PR (PR #24) that references the infrastructure PR you just created and merged. The comment must mention the infrastructure PR number using "PR #[NUMBER]" format.
+Add a comment to the original conflicted PR that references the infrastructure PR you just created and merged. The comment must mention the infrastructure PR number using "PR #[NUMBER]" format.
 
 **Step 5: Merge Original PR**
 Now merge the original conflicted PR since it should be able to merge cleanly.
