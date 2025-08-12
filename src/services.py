@@ -262,6 +262,90 @@ SERVICES = {
         },
         "mcp_server": None,
         "eval_config": None
+    },
+
+    "playwright_webarena": {
+        "config_schema": {
+            "browser": {
+                "env_var": "PLAYWRIGHT_BROWSER",
+                "default": "chromium",
+                "required": False,
+                "description": "Browser to use (chromium, firefox, webkit)",
+                "validator": "in:chromium,firefox,webkit"
+            },
+            "headless": {
+                "env_var": "PLAYWRIGHT_HEADLESS",
+                "default": True,
+                "required": False,
+                "description": "Run browser in headless mode",
+                "transform": "bool"
+            },
+            "network_origins": {
+                "env_var": "PLAYWRIGHT_NETWORK_ORIGINS",
+                "default": "*",
+                "required": False,
+                "description": "Allowed network origins (comma-separated or *)"
+            },
+            "user_profile": {
+                "env_var": "PLAYWRIGHT_USER_PROFILE",
+                "default": "isolated",
+                "required": False,
+                "description": "User profile type (isolated or persistent)",
+                "validator": "in:isolated,persistent"
+            },
+            "viewport_width": {
+                "env_var": "PLAYWRIGHT_VIEWPORT_WIDTH",
+                "default": 1280,
+                "required": False,
+                "description": "Browser viewport width",
+                "transform": "int"
+            },
+            "viewport_height": {
+                "env_var": "PLAYWRIGHT_VIEWPORT_HEIGHT",
+                "default": 720,
+                "required": False,
+                "description": "Browser viewport height",
+                "transform": "int"
+            },
+            "base_url": {
+                "env_var": "PLAYWRIGHT_WEBARENA_BASE_URL",
+                "default": "http://35.247.158.69:9999",
+                "required": False,
+                "description": "Base URL for WebArena environment"
+            },
+            "skip_cleanup": {
+                "env_var": "PLAYWRIGHT_WEBARENA_SKIP_CLEANUP",
+                "default": False,
+                "required": False,
+                "description": "Skip Docker container cleanup for debugging",
+                "transform": "bool"
+            }
+        },
+        "components": {
+            "task_manager": "src.mcp_services.playwright_webarena.playwright_task_manager.PlaywrightTaskManager",
+            "state_manager": "src.mcp_services.playwright_webarena.playwright_state_manager.PlaywrightStateManager",
+            "login_helper": "src.mcp_services.playwright_webarena.playwright_login_helper.PlaywrightLoginHelper",
+        },
+        "config_mapping": {
+            "state_manager": {
+                "browser": "browser",
+                "headless": "headless",
+                "network_origins": "network_origins",
+                "user_profile": "user_profile",
+                "viewport_width": "viewport_width",
+                "viewport_height": "viewport_height",
+                "skip_cleanup": "skip_cleanup",
+            },
+            "login_helper": {
+                "browser": "browser",
+                "headless": "headless",
+            },
+            "task_manager": {
+                "base_url": "base_url",
+            }
+        },
+        "mcp_server": None,
+        "eval_config": None
     }
 }
 

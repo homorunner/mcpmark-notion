@@ -220,6 +220,28 @@ class MCPAgent:
                 cache_tools_list=True,
             )
 
+        elif self.service == "playwright_webarena":
+            # Playwright WebArena MCP server (same as playwright but with base_url support)
+            browser = cfg.get("browser", "chromium")
+            headless = cfg.get("headless", True)
+            viewport_width = cfg.get("viewport_width", 1280)
+            viewport_height = cfg.get("viewport_height", 720)
+
+            args = ["-y", "@playwright/mcp@latest"]
+            if headless:
+                args.append("--headless")
+            args.append("--isolated")
+            args.extend(["--browser", browser, "--viewport-size", f"{viewport_width},{viewport_height}"])
+
+            return MCPServerStdio(
+                params={
+                    "command": "npx",
+                    "args": args,
+                },
+                client_session_timeout_seconds=120,
+                cache_tools_list=True,
+            )
+
         elif self.service == "postgres":
             host = cfg.get("host", "localhost")
             port = cfg.get("port", 5432)
