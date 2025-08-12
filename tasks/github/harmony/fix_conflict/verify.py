@@ -2,11 +2,12 @@ import sys
 import os
 import requests
 from typing import Dict, Optional, Tuple
+from dotenv import load_dotenv
 
 
-def _get_github_api(endpoint: str, headers: Dict[str, str]) -> Tuple[bool, Optional[Dict]]:
+def _get_github_api(endpoint: str, headers: Dict[str, str], org: str, repo: str = "harmony") -> Tuple[bool, Optional[Dict]]:
     """Make a GET request to GitHub API and return (success, response)."""
-    url = f"https://api.github.com/repos/mcpleague-eval/harmony/{endpoint}"
+    url = f"https://api.github.com/repos/{org}/{repo}/{endpoint}"
     try:
         response = requests.get(url, headers=headers)
         if response.status_code == 200:
@@ -21,15 +22,15 @@ def _get_github_api(endpoint: str, headers: Dict[str, str]) -> Tuple[bool, Optio
         return False, None
 
 
-def _check_ci_file_exists(file_path: str, headers: Dict[str, str]) -> bool:
+def _check_ci_file_exists(file_path: str, headers: Dict[str, str], org: str, repo: str = "harmony") -> bool:
     """Check if CI file exists in main branch."""
-    success, _ = _get_github_api(f"contents/{file_path}?ref=main", headers)
+    success, _ = _get_github_api(f"contents/{file_path}?ref=main", headers, org, repo)
     return success
 
 
-def _check_pr_comments(pr_number: int, infra_pr_number: int, headers: Dict[str, str]) -> bool:
+def _check_pr_comments(pr_number: int, infra_pr_number: int, headers: Dict[str, str], org: str, repo: str = "harmony") -> bool:
     """Check if PR has a comment linking to the infrastructure PR using 'PR #[NUMBER]' format."""
-    success, comments = _get_github_api(f"issues/{pr_number}/comments", headers)
+    success, comments = _get_github_api(f"issues/{pr_number}/comments", headers, org, repo)
     if not success or not comments:
         return False
     
@@ -42,9 +43,9 @@ def _check_pr_comments(pr_number: int, infra_pr_number: int, headers: Dict[str, 
     return False
 
 
-def _find_infrastructure_pr(headers: Dict[str, str]) -> Optional[Dict]:
+def _find_infrastructure_pr(headers: Dict[str, str], org: str, repo: str = "harmony") -> Optional[Dict]:
     """Find the infrastructure PR by checking title and body content."""
-    success, prs = _get_github_api("pulls?state=all&per_page=50", headers)
+    success, prs = _get_github_api("pulls?state=all&per_page=50", headers, org, repo)
     if success and prs:
         for pr in prs:
             title = pr.get("title", "").lower()
@@ -71,10 +72,19 @@ def verify() -> bool:
     Programmatically verify that the merge conflict resolution workflow meets the 
     requirements described in description.md.
     """
-    # Get GitHub token
+    # Load environment variables from .mcp_env
+    load_dotenv(".mcp_env")
+    
+    # Get GitHub token and org
     github_token = os.environ.get("GITHUB_TOKEN")
+    github_org = os.environ.get("GITHUB_EVAL_ORG")
+    
     if not github_token:
         print("Error: GITHUB_TOKEN environment variable not set", file=sys.stderr)
+        return False
+    
+    if not github_org:
+        print("Error: GITHUB_EVAL_ORG environment variable not set", file=sys.stderr)
         return False
     
     headers = {
@@ -87,13 +97,13 @@ def verify() -> bool:
     
     # 1. Check that CI infrastructure file exists in main (extracted from conflicted PR)
     print("1. Checking CI infrastructure was added to main...")
-    if not _check_ci_file_exists(".github/workflows/CI.yml", headers):
+    if not _check_ci_file_exists(".github/workflows/CI.yml", headers, github_org):
         print("Error: .github/workflows/CI.yml not found in main", file=sys.stderr)
         return False
     
     # 2. Find infrastructure PR with required title and body content
     print("2. Finding infrastructure PR with required content...")
-    infra_pr = _find_infrastructure_pr(headers)
+    infra_pr = _find_infrastructure_pr(headers, github_org)
     if not infra_pr:
         print("Error: No infrastructure PR found with required title and body content", file=sys.stderr)
         print("Required title: 'Add CI infrastructure' and 'resolve conflicts'", file=sys.stderr)
@@ -109,7 +119,7 @@ def verify() -> bool:
     
     # 4. Check that PR #24 is merged
     print("3. Checking that PR #24 is merged...")
-    success, pr24 = _get_github_api("pulls/24", headers)
+    success, pr24 = _get_github_api("pulls/24", headers, github_org)
     if not success or not pr24:
         print("Error: PR #24 not found", file=sys.stderr)
         return False
@@ -120,7 +130,7 @@ def verify() -> bool:
     
     # 5. Check that PR #24 has a comment linking to the infrastructure PR
     print("4. Checking that PR #24 has comment linking to infrastructure PR...")
-    if not _check_pr_comments(24, infra_pr.get('number'), headers):
+    if not _check_pr_comments(24, infra_pr.get('number'), headers, github_org):
         print(f"Error: PR #24 missing comment linking to infrastructure PR #{infra_pr.get('number')}", file=sys.stderr)
         return False
     

@@ -63,6 +63,7 @@ This document addresses critical memory issues identified in issues #49 and #46.
 - Addresses issue #46: JavaScript heap out of memory crashes
 - Related to issue #47: Cross-project hook execution problems
 ```
+```
 
 **Step 4: Create Pull Request with Issue Cross-References**
 Create a pull request from 'hotfix/memory-optimization-v1.0.72' to 'main' with:
@@ -75,31 +76,22 @@ Create a pull request from 'hotfix/memory-optimization-v1.0.72' to 'main' with:
   - Reference to your tracking issue using "Tracked in #[ISSUE_NUMBER]"
   - Keywords: "memory optimization", "context management", "heap exhaustion", "v1.0.72 hotfix"
 
-**Step 5: Review Existing PR #52 (Shell Completions)**
-For the existing PR #52:
-- Create a pending review
-- Add a review comment on the shell-completions directory suggesting improvements:
-  - Comment should mention "cross-shell compatibility testing"
-  - Include keywords: "bash", "zsh", "fish", "completion scripts", "installation instructions"
-  - Suggest adding "README.md for installation guidance"
-- Submit the review as REQUEST_CHANGES with overall feedback about documentation
-
-**Step 6: Update and Merge PR #51 (Statsig Logging)**
+**Step 5: Update and Merge PR #51 (Statsig Logging)**
 For the existing PR #51:
 - Update the PR description to include technical implementation details
 - Add a "## Technical Implementation" section mentioning "event logging integration"
 - Add keywords: "workflow enhancement", "issue management automation", "logging consistency"
 - Merge the PR using the squash merge method
 
-**Step 7: Add Implementation Comment to Tracking Issue**
+**Step 6: Add Implementation Comment to Tracking Issue**
 Add a comment to your original tracking issue with:
 - Reference to your hotfix PR using "PR #[NUMBER]" pattern
-- Reference to actions taken on PR #51 and PR #52
+- Reference to actions taken on PR #51
 - Technical details about the memory optimization approach
 - Keywords: "context buffer management", "streaming optimization", "progressive cleanup"
 - Mention of configuration options and thresholds
 
-**Step 8: Close Tracking Issue with Resolution Summary**
+**Step 7: Close Tracking Issue with Resolution Summary**
 Close your tracking issue by updating its state to 'closed' with:
 - A final comment summarizing completed actions
 - Reference to merged PR #51 and pending hotfix PR

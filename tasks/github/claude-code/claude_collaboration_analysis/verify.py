@@ -4,11 +4,12 @@ import requests
 from typing import Dict, List, Optional, Tuple
 import base64
 import re
+from dotenv import load_dotenv
 
 
-def _get_github_api(endpoint: str, headers: Dict[str, str]) -> Tuple[bool, Optional[Dict]]:
+def _get_github_api(endpoint: str, headers: Dict[str, str], org: str, repo: str = "claude-code") -> Tuple[bool, Optional[Dict]]:
     """Make a GET request to GitHub API and return (success, response)."""
-    url = f"https://api.github.com/repos/mcpleague-eval/claude-code/{endpoint}"
+    url = f"https://api.github.com/repos/{org}/{repo}/{endpoint}"
     try:
         response = requests.get(url, headers=headers)
         if response.status_code == 200:
@@ -23,9 +24,9 @@ def _get_github_api(endpoint: str, headers: Dict[str, str]) -> Tuple[bool, Optio
         return False, None
 
 
-def _get_file_content(file_path: str, headers: Dict[str, str], ref: str = "main") -> Optional[str]:
+def _get_file_content(file_path: str, headers: Dict[str, str], org: str, repo: str = "claude-code", ref: str = "main") -> Optional[str]:
     """Get the content of a file from the repository."""
-    success, result = _get_github_api(f"contents/{file_path}?ref={ref}", headers)
+    success, result = _get_github_api(f"contents/{file_path}?ref={ref}", headers, org, repo)
     if not success or not result:
         return None
     
@@ -113,10 +114,19 @@ def _parse_collaborators_table(content: str) -> List[Dict]:
 
 def verify_task() -> bool:
     """Verify the Claude collaboration analysis task."""
-    # Get GitHub token from environment
+    # Load environment variables from .mcp_env
+    load_dotenv(".mcp_env")
+    
+    # Get GitHub token and org
     github_token = os.environ.get("GITHUB_TOKEN")
+    github_org = os.environ.get("GITHUB_EVAL_ORG")
+    
     if not github_token:
         print("Error: GITHUB_TOKEN environment variable not set", file=sys.stderr)
+        return False
+    
+    if not github_org:
+        print("Error: GITHUB_EVAL_ORG environment variable not set", file=sys.stderr)
         return False
     
     headers = {
@@ -145,7 +155,7 @@ def verify_task() -> bool:
     
     # 1. Check if CLAUDE_COLLABORATION_ANALYSIS.md exists in main branch
     print("1. Checking if CLAUDE_COLLABORATION_ANALYSIS.md exists...")
-    content = _get_file_content("CLAUDE_COLLABORATION_ANALYSIS.md", headers)
+    content = _get_file_content("CLAUDE_COLLABORATION_ANALYSIS.md", headers, github_org)
     if not content:
         print("Error: CLAUDE_COLLABORATION_ANALYSIS.md not found in main branch", file=sys.stderr)
         return False
@@ -225,7 +235,7 @@ def verify_task() -> bool:
     
     # 5. Check commit message verification
     print("5. Verifying commit message...")
-    success, latest_commits = _get_github_api("commits?per_page=10", headers)
+    success, latest_commits = _get_github_api("commits?per_page=10", headers, github_org)
     if not success:
         print("Error: Failed to fetch recent commits", file=sys.stderr)
         return False

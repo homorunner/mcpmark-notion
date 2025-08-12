@@ -4,11 +4,12 @@ import requests
 from typing import Dict, List, Optional, Tuple
 import base64
 import re
+from dotenv import load_dotenv
 
 
-def _get_github_api(endpoint: str, headers: Dict[str, str]) -> Tuple[bool, Optional[Dict]]:
+def _get_github_api(endpoint: str, headers: Dict[str, str], org: str, repo: str = "claude-code") -> Tuple[bool, Optional[Dict]]:
     """Make a GET request to GitHub API and return (success, response)."""
-    url = f"https://api.github.com/repos/mcpleague-eval/claude-code/{endpoint}"
+    url = f"https://api.github.com/repos/{org}/{repo}/{endpoint}"
     try:
         response = requests.get(url, headers=headers)
         if response.status_code == 200:
@@ -23,15 +24,15 @@ def _get_github_api(endpoint: str, headers: Dict[str, str]) -> Tuple[bool, Optio
         return False, None
 
 
-def _check_branch_exists(branch_name: str, headers: Dict[str, str]) -> bool:
+def _check_branch_exists(branch_name: str, headers: Dict[str, str], org: str, repo: str = "claude-code") -> bool:
     """Verify that a branch exists in the repository."""
-    success, _ = _get_github_api(f"branches/{branch_name}", headers)
+    success, _ = _get_github_api(f"branches/{branch_name}", headers, org, repo)
     return success
 
 
-def _get_file_content(file_path: str, headers: Dict[str, str], ref: str = "main") -> Optional[str]:
+def _get_file_content(file_path: str, headers: Dict[str, str], org: str, repo: str = "claude-code", ref: str = "main") -> Optional[str]:
     """Get the content of a file from the repository."""
-    success, result = _get_github_api(f"contents/{file_path}?ref={ref}", headers)
+    success, result = _get_github_api(f"contents/{file_path}?ref={ref}", headers, org, repo)
     if not success or not result:
         return None
     
@@ -43,11 +44,11 @@ def _get_file_content(file_path: str, headers: Dict[str, str], ref: str = "main"
         return None
 
 
-def _find_issue_by_title_keyword(keyword: str, headers: Dict[str, str]) -> Optional[Dict]:
+def _find_issue_by_title_keyword(keyword: str, headers: Dict[str, str], org: str, repo: str = "claude-code") -> Optional[Dict]:
     """Find an issue by title keyword and return the issue data."""
     # Check both open and closed issues
     for state in ["open", "closed"]:
-        success, issues = _get_github_api(f"issues?state={state}&per_page=100", headers)
+        success, issues = _get_github_api(f"issues?state={state}&per_page=100", headers, org, repo)
         if success and issues:
             for issue in issues:
                 if keyword.lower() in issue.get("title", "").lower():
@@ -55,11 +56,11 @@ def _find_issue_by_title_keyword(keyword: str, headers: Dict[str, str]) -> Optio
     return None
 
 
-def _find_pr_by_title_keyword(keyword: str, headers: Dict[str, str]) -> Optional[Dict]:
+def _find_pr_by_title_keyword(keyword: str, headers: Dict[str, str], org: str, repo: str = "claude-code") -> Optional[Dict]:
     """Find a PR by title keyword and return the PR data."""
     # Check both open and closed PRs
     for state in ["open", "closed"]:
-        success, prs = _get_github_api(f"pulls?state={state}&per_page=100", headers)
+        success, prs = _get_github_api(f"pulls?state={state}&per_page=100", headers, org, repo)
         if success and prs:
             for pr in prs:
                 if keyword.lower() in pr.get("title", "").lower():
@@ -67,9 +68,9 @@ def _find_pr_by_title_keyword(keyword: str, headers: Dict[str, str]) -> Optional
     return None
 
 
-def _get_pr_by_number(pr_number: int, headers: Dict[str, str]) -> Optional[Dict]:
+def _get_pr_by_number(pr_number: int, headers: Dict[str, str], org: str, repo: str = "claude-code") -> Optional[Dict]:
     """Get a specific PR by number."""
-    success, pr = _get_github_api(f"pulls/{pr_number}", headers)
+    success, pr = _get_github_api(f"pulls/{pr_number}", headers, org, repo)
     if success:
         return pr
     return None
@@ -91,17 +92,17 @@ def _check_addresses_pattern(pr_body: str, issue_numbers: List[str]) -> bool:
     return all(f"Addresses #{num}" in pr_body or f"addresses #{num}" in pr_body for num in issue_numbers)
 
 
-def _get_issue_comments(issue_number: int, headers: Dict[str, str]) -> List[Dict]:
+def _get_issue_comments(issue_number: int, headers: Dict[str, str], org: str, repo: str = "claude-code") -> List[Dict]:
     """Get all comments for an issue."""
-    success, comments = _get_github_api(f"issues/{issue_number}/comments", headers)
+    success, comments = _get_github_api(f"issues/{issue_number}/comments", headers, org, repo)
     if success and comments:
         return comments
     return []
 
 
-def _get_pr_reviews(pr_number: int, headers: Dict[str, str]) -> List[Dict]:
+def _get_pr_reviews(pr_number: int, headers: Dict[str, str], org: str, repo: str = "claude-code") -> List[Dict]:
     """Get all reviews for a PR."""
-    success, reviews = _get_github_api(f"pulls/{pr_number}/reviews", headers)
+    success, reviews = _get_github_api(f"pulls/{pr_number}/reviews", headers, org, repo)
     if success and reviews:
         return reviews
     return []
@@ -118,16 +119,6 @@ def _check_headings_and_keywords(body: str, headings: List[str], keywords: List[
     has_keywords = all(keyword.lower() in body.lower() for keyword in keywords)
     return has_headings and has_keywords
 
-
-def _check_pr_review_for_pr52(reviews: List[Dict], keywords: List[str]) -> bool:
-    """Check if PR #52 has review comments containing required keywords."""
-    for review in reviews:
-        body = review.get("body", "")
-        state = review.get("state", "")
-        # Look for REQUEST_CHANGES review with required keywords
-        if state == "REQUEST_CHANGES" and body and all(keyword.lower() in body.lower() for keyword in keywords):
-            return True
-    return False
 
 
 def _check_exact_file_content(content: str, expected_sections: List[str]) -> bool:
@@ -169,19 +160,25 @@ def verify() -> bool:
     HOTFIX_PR_HEADINGS = ["## Summary", "## Critical Issues Addressed", "## Documentation Changes"]
     HOTFIX_PR_KEYWORDS = ["memory optimization", "context management", "heap exhaustion", "v1.0.72 hotfix"]
     
-    # PR #52 review requirements
-    PR52_REVIEW_KEYWORDS = ["bash", "zsh", "fish", "completion scripts", "installation instructions", "cross-shell compatibility"]
-    
     # PR #51 update requirements
     PR51_UPDATE_KEYWORDS = ["Technical Implementation", "event logging integration", "workflow enhancement"]
     
     # Issue comment requirements
     ISSUE_COMMENT_KEYWORDS = ["context buffer management", "streaming optimization", "progressive cleanup"]
     
-    # Get GitHub token
+    # Load environment variables from .mcp_env
+    load_dotenv(".mcp_env")
+    
+    # Get GitHub token and org
     github_token = os.environ.get("GITHUB_TOKEN")
+    github_org = os.environ.get("GITHUB_EVAL_ORG")
+    
     if not github_token:
         print("Error: GITHUB_TOKEN environment variable not set", file=sys.stderr)
+        return False
+    
+    if not github_org:
+        print("Error: GITHUB_EVAL_ORG environment variable not set", file=sys.stderr)
         return False
     
     headers = {
@@ -194,14 +191,14 @@ def verify() -> bool:
     
     # 1. Check that hotfix branch exists
     print("1. Verifying hotfix branch exists...")
-    if not _check_branch_exists(HOTFIX_BRANCH_NAME, headers):
+    if not _check_branch_exists(HOTFIX_BRANCH_NAME, headers, github_org):
         print(f"Error: Branch '{HOTFIX_BRANCH_NAME}' not found", file=sys.stderr)
         return False
     print("✓ Hotfix branch created")
     
     # 2. Check that the memory optimization documentation exists with exact content
     print("2. Verifying MEMORY_OPTIMIZATION.md documentation...")
-    memory_doc_content = _get_file_content("docs/MEMORY_OPTIMIZATION.md", headers, HOTFIX_BRANCH_NAME)
+    memory_doc_content = _get_file_content("docs/MEMORY_OPTIMIZATION.md", headers, github_org, "claude-code", HOTFIX_BRANCH_NAME)
     if not memory_doc_content:
         print("Error: docs/MEMORY_OPTIMIZATION.md not found in hotfix branch", file=sys.stderr)
         return False
@@ -213,7 +210,7 @@ def verify() -> bool:
     
     # 3. Find and verify the tracking issue
     print("3. Verifying tracking issue creation and content...")
-    tracking_issue = _find_issue_by_title_keyword(TRACKING_ISSUE_KEYWORD, headers)
+    tracking_issue = _find_issue_by_title_keyword(TRACKING_ISSUE_KEYWORD, headers, github_org)
     if not tracking_issue:
         print(f"Error: Tracking issue with keyword '{TRACKING_ISSUE_KEYWORD}' not found", file=sys.stderr)
         return False
@@ -239,7 +236,7 @@ def verify() -> bool:
     
     # 4. Find and verify the hotfix PR
     print("4. Verifying hotfix pull request creation and content...")
-    hotfix_pr = _find_pr_by_title_keyword(HOTFIX_PR_KEYWORD, headers)
+    hotfix_pr = _find_pr_by_title_keyword(HOTFIX_PR_KEYWORD, headers, github_org)
     if not hotfix_pr:
         print(f"Error: Hotfix PR with keyword '{HOTFIX_PR_KEYWORD}' not found", file=sys.stderr)
         return False
@@ -269,17 +266,9 @@ def verify() -> bool:
         return False
     print("✓ Hotfix PR created with correct content and references")
     
-    # 5. Check PR #52 has review with required feedback
-    print("5. Verifying PR #52 review comments...")
-    pr52_reviews = _get_pr_reviews(52, headers)
-    if not _check_pr_review_for_pr52(pr52_reviews, PR52_REVIEW_KEYWORDS):
-        print("Error: PR #52 missing REQUEST_CHANGES review with required keywords", file=sys.stderr)
-        return False
-    print("✓ PR #52 reviewed with appropriate feedback")
-    
-    # 6. Check PR #51 has been updated and merged
-    print("6. Verifying PR #51 update and merge...")
-    pr51 = _get_pr_by_number(51, headers)
+    # 5. Check PR #51 has been updated and merged
+    print("5. Verifying PR #51 update and merge...")
+    pr51 = _get_pr_by_number(51, headers, github_org)
     if not pr51:
         print("Error: PR #51 not found", file=sys.stderr)
         return False
@@ -293,20 +282,20 @@ def verify() -> bool:
         return False
     
     # Check PR #51 has been merged
-    if pr51_state != "closed" or not pr51.get("merged", False):
+    if pr51_state != "closed" or not pr51.get("merged_at"):
         print("Error: PR #51 has not been merged", file=sys.stderr)
         return False
     print("✓ PR #51 updated and merged successfully")
     
-    # 7. Check tracking issue has implementation comment
-    print("7. Verifying tracking issue implementation comment...")
-    tracking_issue_comments = _get_issue_comments(tracking_issue_number, headers)
+    # 6. Check tracking issue has implementation comment
+    print("6. Verifying tracking issue implementation comment...")
+    tracking_issue_comments = _get_issue_comments(tracking_issue_number, headers, github_org)
     
     has_implementation_comment = False
     for comment in tracking_issue_comments:
         body = comment.get("body", "")
         has_pr_ref = f"PR #{hotfix_pr_number}" in body
-        has_pr51_ref = "PR #51" in body and "PR #52" in body  
+        has_pr51_ref = "PR #51" in body  
         has_keywords = all(keyword.lower() in body.lower() for keyword in ISSUE_COMMENT_KEYWORDS)
         if has_pr_ref and has_pr51_ref and has_keywords:
             has_implementation_comment = True
@@ -317,8 +306,8 @@ def verify() -> bool:
         return False
     print("✓ Tracking issue has implementation comment with PR references")
     
-    # 8. Check tracking issue is closed
-    print("8. Verifying tracking issue closure...")
+    # 7. Check tracking issue is closed
+    print("7. Verifying tracking issue closure...")
     if tracking_issue.get("state") != "closed":
         print(f"Error: Tracking issue #{tracking_issue_number} is not closed", file=sys.stderr)
         return False
@@ -330,7 +319,6 @@ def verify() -> bool:
     print(f"  - Hotfix PR #{hotfix_pr_number}: {hotfix_pr.get('title')}")
     print(f"  - Branch: {HOTFIX_BRANCH_NAME}")
     print(f"  - PR #51 merged: ✓")
-    print(f"  - PR #52 reviewed: ✓")
     print(f"  - Memory optimization documentation: ✓")
     
     return True

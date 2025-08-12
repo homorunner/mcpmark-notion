@@ -26,7 +26,7 @@ import os
 import subprocess
 import time
 from pathlib import Path
-from typing import Optional, Iterable
+from typing import Iterable
 
 import requests
 from dotenv import load_dotenv
@@ -280,6 +280,27 @@ def _disable_repository_notifications(
         logger.error("Failed to disable repository notifications: %s", e)
 
 
+def _set_default_branch(
+    sess: requests.Session, owner: str, repo_name: str, default_branch: str
+):
+    """Set the default branch for a repository."""
+    if default_branch != "main":  # Only update if not already main
+        logger.info("[import] Setting default branch to '%s'", default_branch)
+        url = f"{_API_ROOT}/repos/{owner}/{repo_name}"
+        data = {"default_branch": default_branch}
+        resp = sess.patch(url, json=data)
+        if resp.status_code in (200, 201):
+            logger.info(
+                "[import] Successfully set default branch to '%s'", default_branch
+            )
+        else:
+            logger.warning(
+                "[import] Failed to set default branch: %s %s",
+                resp.status_code,
+                resp.text,
+            )
+
+
 def _remove_github_directory(repo_path: Path, owner: str, repo_name: str, token: str):
     """Remove .github directory after pushing and commit the deletion."""
     import shutil
@@ -368,6 +389,9 @@ def import_repository(
     repo_path = tdir / "repo"
     logger.info("[phase] Pushing git history …")
     _push_repo(repo_path, target_owner, repo_name, github_token, needed_refs)
+
+    # Set the default branch if it's not 'main'
+    _set_default_branch(sess, target_owner, repo_name, default_branch)
 
     # Remove .github directory right after pushing, before creating issues/PRs
     _remove_github_directory(repo_path, target_owner, repo_name, github_token)

@@ -3,11 +3,12 @@ import os
 import requests
 from typing import Dict, List, Optional, Tuple
 import base64
+from dotenv import load_dotenv
 
 
-def _get_github_api(endpoint: str, headers: Dict[str, str]) -> Tuple[bool, Optional[Dict]]:
+def _get_github_api(endpoint: str, headers: Dict[str, str], org: str, repo: str = "claude-code") -> Tuple[bool, Optional[Dict]]:
     """Make a GET request to GitHub API and return (success, response)."""
-    url = f"https://api.github.com/repos/mcpleague-eval/claude-code/{endpoint}"
+    url = f"https://api.github.com/repos/{org}/{repo}/{endpoint}"
     
     try:
         response = requests.get(url, headers=headers)
@@ -23,15 +24,15 @@ def _get_github_api(endpoint: str, headers: Dict[str, str]) -> Tuple[bool, Optio
         return False, None
 
 
-def _check_branch_exists(branch_name: str, headers: Dict[str, str]) -> bool:
+def _check_branch_exists(branch_name: str, headers: Dict[str, str], org: str, repo: str = "claude-code") -> bool:
     """Verify that a branch exists in the repository."""
-    success, _ = _get_github_api(f"branches/{branch_name}", headers)
+    success, _ = _get_github_api(f"branches/{branch_name}", headers, org, repo)
     return success
 
 
-def _get_file_content(file_path: str, headers: Dict[str, str], ref: str = "main") -> Optional[str]:
+def _get_file_content(file_path: str, headers: Dict[str, str], org: str, repo: str = "claude-code", ref: str = "main") -> Optional[str]:
     """Get the content of a file from the repository."""
-    success, result = _get_github_api(f"contents/{file_path}?ref={ref}", headers)
+    success, result = _get_github_api(f"contents/{file_path}?ref={ref}", headers, org, repo)
     if not success or not result:
         return None
     
@@ -43,10 +44,10 @@ def _get_file_content(file_path: str, headers: Dict[str, str], ref: str = "main"
         return None
 
 
-def _find_pr_by_title_keyword(keyword: str, headers: Dict[str, str]) -> Optional[Dict]:
+def _find_pr_by_title_keyword(keyword: str, headers: Dict[str, str], org: str, repo: str = "claude-code") -> Optional[Dict]:
     """Find a PR by title keyword and return the PR data."""
     for state in ["open", "closed"]:
-        success, prs = _get_github_api(f"pulls?state={state}&per_page=100", headers)
+        success, prs = _get_github_api(f"pulls?state={state}&per_page=100", headers, org, repo)
         if success and prs:
             for pr in prs:
                 if keyword.lower() in pr.get("title", "").lower():
@@ -54,13 +55,13 @@ def _find_pr_by_title_keyword(keyword: str, headers: Dict[str, str]) -> Optional
     return None
 
 
-def _get_pr_merge_commit(pr_number: int, headers: Dict[str, str]) -> Optional[Dict]:
+def _get_pr_merge_commit(pr_number: int, headers: Dict[str, str], org: str, repo: str = "claude-code") -> Optional[Dict]:
     """Get the merge commit for a PR to check merge method."""
-    success, pr = _get_github_api(f"pulls/{pr_number}", headers)
+    success, pr = _get_github_api(f"pulls/{pr_number}", headers, org, repo)
     if success and pr:
         merge_commit_sha = pr.get("merge_commit_sha")
         if merge_commit_sha:
-            success, commit = _get_github_api(f"commits/{merge_commit_sha}", headers)
+            success, commit = _get_github_api(f"commits/{merge_commit_sha}", headers, org, repo)
             if success:
                 return commit
     return None
@@ -136,10 +137,19 @@ def verify() -> bool:
         "## Risk Assessment"
     ]
     
-    # Get GitHub token
+    # Load environment variables from .mcp_env
+    load_dotenv(".mcp_env")
+    
+    # Get GitHub token and org
     github_token = os.environ.get("GITHUB_TOKEN")
+    github_org = os.environ.get("GITHUB_EVAL_ORG")
+    
     if not github_token:
         print("Error: GITHUB_TOKEN environment variable not set", file=sys.stderr)
+        return False
+    
+    if not github_org:
+        print("Error: GITHUB_EVAL_ORG environment variable not set", file=sys.stderr)
         return False
     
     headers = {
@@ -152,14 +162,14 @@ def verify() -> bool:
     
     # 1. Check that documentation branch exists
     print("1. Verifying documentation branch exists...")
-    if not _check_branch_exists(DOCS_BRANCH_NAME, headers):
+    if not _check_branch_exists(DOCS_BRANCH_NAME, headers, github_org):
         print(f"Error: Branch '{DOCS_BRANCH_NAME}' not found", file=sys.stderr)
         return False
     print("✓ Documentation branch created")
     
     # 2. Check changelog file
     print("2. Verifying CHANGELOG-GENERATED.md...")
-    changelog_content = _get_file_content("CHANGELOG-GENERATED.md", headers, DOCS_BRANCH_NAME)
+    changelog_content = _get_file_content("CHANGELOG-GENERATED.md", headers, github_org, "claude-code", DOCS_BRANCH_NAME)
     if not changelog_content:
         print("Error: CHANGELOG-GENERATED.md not found", file=sys.stderr)
         return False
@@ -183,7 +193,7 @@ def verify() -> bool:
     
     # 3. Check migration guide
     print("3. Verifying MIGRATION_GUIDE.md...")
-    migration_content = _get_file_content("docs/MIGRATION_GUIDE.md", headers, DOCS_BRANCH_NAME)
+    migration_content = _get_file_content("docs/MIGRATION_GUIDE.md", headers, github_org, "claude-code", DOCS_BRANCH_NAME)
     if not migration_content:
         print("Error: docs/MIGRATION_GUIDE.md not found", file=sys.stderr)
         return False
@@ -202,7 +212,7 @@ def verify() -> bool:
     
     # 4. Check issue analysis report
     print("4. Verifying ISSUE_ANALYSIS.md...")
-    issue_analysis_content = _get_file_content("reports/ISSUE_ANALYSIS.md", headers, DOCS_BRANCH_NAME)
+    issue_analysis_content = _get_file_content("reports/ISSUE_ANALYSIS.md", headers, github_org, "claude-code", DOCS_BRANCH_NAME)
     if not issue_analysis_content:
         print("Error: reports/ISSUE_ANALYSIS.md not found", file=sys.stderr)
         return False
@@ -219,7 +229,7 @@ def verify() -> bool:
     
     # 5. Check PR integration plan
     print("5. Verifying PR_INTEGRATION_PLAN.md...")
-    pr_plan_content = _get_file_content("reports/PR_INTEGRATION_PLAN.md", headers, DOCS_BRANCH_NAME)
+    pr_plan_content = _get_file_content("reports/PR_INTEGRATION_PLAN.md", headers, github_org, "claude-code", DOCS_BRANCH_NAME)
     if not pr_plan_content:
         print("Error: reports/PR_INTEGRATION_PLAN.md not found", file=sys.stderr)
         return False
@@ -238,10 +248,10 @@ def verify() -> bool:
     
     # 6. Find and verify the documentation PR
     print("6. Verifying documentation pull request...")
-    docs_pr = _find_pr_by_title_keyword(DOCS_PR_KEYWORD, headers)
+    docs_pr = _find_pr_by_title_keyword(DOCS_PR_KEYWORD, headers, github_org)
     if not docs_pr:
         # Try alternative keyword
-        docs_pr = _find_pr_by_title_keyword("changelog and migration", headers)
+        docs_pr = _find_pr_by_title_keyword("changelog and migration", headers, github_org)
     
     if not docs_pr:
         print(f"Error: Documentation PR not found", file=sys.stderr)
@@ -265,12 +275,12 @@ def verify() -> bool:
     
     # 7. Check that the documentation PR has been merged with squash method
     print("7. Verifying documentation PR merge with squash method...")
-    if docs_pr.get("state") != "closed" or not docs_pr.get("merged"):
+    if docs_pr.get("state") != "closed" or not docs_pr.get("merged_at"):
         print("Error: Documentation PR has not been merged", file=sys.stderr)
         return False
     
     # Check merge method was squash by examining the merge commit
-    merge_commit = _get_pr_merge_commit(pr_number, headers)
+    merge_commit = _get_pr_merge_commit(pr_number, headers, github_org)
     if merge_commit:
         # Squash merges typically have only one parent (the base branch)
         parents = merge_commit.get("parents", [])

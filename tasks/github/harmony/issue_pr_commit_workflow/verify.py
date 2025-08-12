@@ -3,11 +3,12 @@ import os
 import requests
 from typing import Dict, List, Optional, Tuple
 import base64
+from dotenv import load_dotenv
 
 
-def _get_github_api(endpoint: str, headers: Dict[str, str]) -> Tuple[bool, Optional[Dict]]:
+def _get_github_api(endpoint: str, headers: Dict[str, str], org: str, repo: str = "harmony") -> Tuple[bool, Optional[Dict]]:
     """Make a GET request to GitHub API and return (success, response)."""
-    url = f"https://api.github.com/repos/mcpleague-eval/harmony/{endpoint}"
+    url = f"https://api.github.com/repos/{org}/{repo}/{endpoint}"
     try:
         response = requests.get(url, headers=headers)
         if response.status_code == 200:
@@ -22,15 +23,15 @@ def _get_github_api(endpoint: str, headers: Dict[str, str]) -> Tuple[bool, Optio
         return False, None
 
 
-def _check_branch_exists(branch_name: str, headers: Dict[str, str]) -> bool:
+def _check_branch_exists(branch_name: str, headers: Dict[str, str], org: str, repo: str = "harmony") -> bool:
     """Verify that a branch exists in the repository."""
-    success, _ = _get_github_api(f"branches/{branch_name}", headers)
+    success, _ = _get_github_api(f"branches/{branch_name}", headers, org, repo)
     return success
 
 
-def _check_file_content(branch: str, file_path: str, keywords: List[str], headers: Dict[str, str]) -> bool:
+def _check_file_content(branch: str, file_path: str, keywords: List[str], headers: Dict[str, str], org: str, repo: str = "harmony") -> bool:
     """Verify that a file exists in branch and contains required keywords."""
-    success, result = _get_github_api(f"contents/{file_path}?ref={branch}", headers)
+    success, result = _get_github_api(f"contents/{file_path}?ref={branch}", headers, org, repo)
     if not success or not result:
         return False
     
@@ -45,11 +46,11 @@ def _check_file_content(branch: str, file_path: str, keywords: List[str], header
     return True
 
 
-def _find_issue_by_title(title_substring: str, headers: Dict[str, str]) -> Optional[Dict]:
+def _find_issue_by_title(title_substring: str, headers: Dict[str, str], org: str, repo: str = "harmony") -> Optional[Dict]:
     """Find an issue by title substring and return the issue data."""
     # Check both open and closed issues
     for state in ["open", "closed"]:
-        success, issues = _get_github_api(f"issues?state={state}&per_page=100", headers)
+        success, issues = _get_github_api(f"issues?state={state}&per_page=100", headers, org, repo)
         if success and issues:
             for issue in issues:
                 if title_substring.lower() in issue.get("title", "").lower():
@@ -57,11 +58,11 @@ def _find_issue_by_title(title_substring: str, headers: Dict[str, str]) -> Optio
     return None
 
 
-def _find_pr_by_title(title_substring: str, headers: Dict[str, str]) -> Optional[Dict]:
+def _find_pr_by_title(title_substring: str, headers: Dict[str, str], org: str, repo: str = "harmony") -> Optional[Dict]:
     """Find a PR by title substring and return the PR data."""
     # Check both open and closed PRs
     for state in ["open", "closed"]:
-        success, prs = _get_github_api(f"pulls?state={state}&per_page=100", headers)
+        success, prs = _get_github_api(f"pulls?state={state}&per_page=100", headers, org, repo)
         if success and prs:
             for pr in prs:
                 if title_substring.lower() in pr.get("title", "").lower():
@@ -91,17 +92,17 @@ def _check_pr_references(pr_body: str, issue_number: int, reference_numbers: Lis
     return closes_pattern and refs_present
 
 
-def _get_issue_comments(issue_number: int, headers: Dict[str, str]) -> List[Dict]:
+def _get_issue_comments(issue_number: int, headers: Dict[str, str], org: str, repo: str = "harmony") -> List[Dict]:
     """Get all comments for an issue."""
-    success, comments = _get_github_api(f"issues/{issue_number}/comments", headers)
+    success, comments = _get_github_api(f"issues/{issue_number}/comments", headers, org, repo)
     if success and comments:
         return comments
     return []
 
 
-def _get_pr_reviews(pr_number: int, headers: Dict[str, str]) -> List[Dict]:
+def _get_pr_reviews(pr_number: int, headers: Dict[str, str], org: str, repo: str = "harmony") -> List[Dict]:
     """Get all reviews for a PR."""
-    success, reviews = _get_github_api(f"pulls/{pr_number}/reviews", headers)
+    success, reviews = _get_github_api(f"pulls/{pr_number}/reviews", headers, org, repo)
     if success and reviews:
         return reviews
     return []
@@ -144,6 +145,21 @@ def verify() -> bool:
     Programmatically verify that the issue-PR-commit workflow meets the 
     requirements described in description.md.
     """
+    # Load environment variables from .mcp_env
+    load_dotenv(".mcp_env")
+    
+    # Get GitHub token and org
+    github_token = os.environ.get("GITHUB_TOKEN")
+    github_org = os.environ.get("GITHUB_EVAL_ORG")
+    
+    if not github_token:
+        print("Error: GITHUB_TOKEN environment variable not set", file=sys.stderr)
+        return False
+    
+    if not github_org:
+        print("Error: GITHUB_EVAL_ORG environment variable not set", file=sys.stderr)
+        return False
+    
     # Configuration constants
     BRANCH_NAME = "fix/race-condition-tokenizer-loading"
     ISSUE_TITLE_SUBSTRING = "race condition in HarmonyEncoding"
@@ -180,12 +196,6 @@ def verify() -> bool:
     # Issue comment requirements
     ISSUE_COMMENT_KEYWORDS = ["std::sync::Mutex", "OnceLock", "thread-safe initialization", "DOWNLOAD_MUTEX"]
     
-    # Get GitHub token
-    github_token = os.environ.get("GITHUB_TOKEN")
-    if not github_token:
-        print("Error: GITHUB_TOKEN environment variable not set", file=sys.stderr)
-        return False
-    
     headers = {
         "Authorization": f"token {github_token}",
         "Accept": "application/vnd.github.v3+json"
@@ -196,19 +206,19 @@ def verify() -> bool:
     
     # 1. Check that feature branch exists
     print("1. Verifying feature branch exists...")
-    if not _check_branch_exists(BRANCH_NAME, headers):
+    if not _check_branch_exists(BRANCH_NAME, headers, github_org):
         print(f"Error: Branch '{BRANCH_NAME}' not found", file=sys.stderr)
         return False
     
     # 2. Check that the Rust implementation file exists with required content
     print("2. Verifying concurrent_loading.rs implementation...")
-    if not _check_file_content(BRANCH_NAME, "src/concurrent_loading.rs", RUST_FILE_KEYWORDS, headers):
+    if not _check_file_content(BRANCH_NAME, "src/concurrent_loading.rs", RUST_FILE_KEYWORDS, headers, github_org):
         print("Error: src/concurrent_loading.rs not found or missing required content", file=sys.stderr)
         return False
     
     # 3. Find the created issue
     print("3. Verifying issue creation and content...")
-    issue = _find_issue_by_title(ISSUE_TITLE_SUBSTRING, headers)
+    issue = _find_issue_by_title(ISSUE_TITLE_SUBSTRING, headers, github_org)
     if not issue:
         print(f"Error: Issue with title containing '{ISSUE_TITLE_SUBSTRING}' not found", file=sys.stderr)
         return False
@@ -233,7 +243,7 @@ def verify() -> bool:
     
     # 4. Find the created PR
     print("4. Verifying pull request creation and content...")
-    pr = _find_pr_by_title(PR_TITLE_SUBSTRING, headers)
+    pr = _find_pr_by_title(PR_TITLE_SUBSTRING, headers, github_org)
     if not pr:
         print(f"Error: PR with title containing '{PR_TITLE_SUBSTRING}' not found", file=sys.stderr)
         return False
@@ -259,14 +269,14 @@ def verify() -> bool:
     
     # 5. Check PR review comments
     print("5. Verifying PR review comments...")
-    reviews = _get_pr_reviews(pr_number, headers)
+    reviews = _get_pr_reviews(pr_number, headers, github_org)
     if not _check_pr_review_content(reviews, REVIEW_KEYWORDS):
         print("Error: PR missing review comment with required technical keywords", file=sys.stderr)
         return False
     
     # 6. Check issue comments for PR reference with technical keywords
     print("6. Verifying issue comment referencing PR...")
-    issue_comments = _get_issue_comments(issue_number, headers)
+    issue_comments = _get_issue_comments(issue_number, headers, github_org)
     if not _check_issue_comment_references(issue_comments, pr_number, ISSUE_COMMENT_KEYWORDS):
         print(f"Error: Issue #{issue_number} missing comment referencing PR #{pr_number} with required technical keywords", file=sys.stderr)
         return False
