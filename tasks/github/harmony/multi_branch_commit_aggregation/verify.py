@@ -1,15 +1,14 @@
 import sys
 import os
 import requests
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 import base64
 import json
-from dotenv import load_dotenv
 
 
-def _get_github_api(endpoint: str, headers: Dict[str, str], org: str, repo: str = "harmony") -> Tuple[bool, Optional[Dict]]:
+def _get_github_api(endpoint: str, headers: Dict[str, str]) -> Tuple[bool, Optional[Dict]]:
     """Make a GET request to GitHub API and return (success, response)."""
-    url = f"https://api.github.com/repos/{org}/{repo}/{endpoint}"
+    url = f"https://api.github.com/repos/mcpleague-eval/harmony/{endpoint}"
     try:
         response = requests.get(url, headers=headers)
         if response.status_code == 200:
@@ -24,15 +23,15 @@ def _get_github_api(endpoint: str, headers: Dict[str, str], org: str, repo: str 
         return False, None
 
 
-def _check_branch_exists(branch_name: str, headers: Dict[str, str], org: str, repo: str = "harmony") -> bool:
+def _check_branch_exists(branch_name: str, headers: Dict[str, str]) -> bool:
     """Verify that a branch exists in the repository."""
-    success, _ = _get_github_api(f"branches/{branch_name}", headers, org, repo)
+    success, _ = _get_github_api(f"branches/{branch_name}", headers)
     return success
 
 
-def _get_file_content(branch: str, file_path: str, headers: Dict[str, str], org: str, repo: str = "harmony") -> Optional[str]:
+def _get_file_content(branch: str, file_path: str, headers: Dict[str, str]) -> Optional[str]:
     """Get the content of a file from a specific branch."""
-    success, result = _get_github_api(f"contents/{file_path}?ref={branch}", headers, org, repo)
+    success, result = _get_github_api(f"contents/{file_path}?ref={branch}", headers)
     if not success or not result:
         return None
     
@@ -45,35 +44,97 @@ def _get_file_content(branch: str, file_path: str, headers: Dict[str, str], org:
 
 
 def _check_branch_commits_json(content: str) -> bool:
-    """Verify BRANCH_COMMITS.json has correct structure and data."""
+    """Verify BRANCH_COMMITS.json has correct structure and expected data."""
+    expected_data = {
+        "pr/45-googlefan256-main": [
+            {
+                "sha": "9fa3f54cf2a2501c7dcbf554d5fbdd0de619fdda",
+                "author": "googlefan256",
+                "message": "Update format.md",
+                "files_changed": 1
+            },
+            {
+                "sha": "3efbf742533a375fc148d75513597e139329578b",
+                "author": "scott-oai",
+                "message": "Merge pull request #29 from axion66/improve-readme-and-checks",
+                "files_changed": 1
+            },
+            {
+                "sha": "9d653a4c7382abc42d115014d195d9354e7ad357",
+                "author": "scott-oai",
+                "message": "Merge pull request #30 from Yuan-ManX/harmony-format",
+                "files_changed": 1
+            }
+        ],
+        "pr/25-neuralsorcerer-patch-1": [
+            {
+                "sha": "c505a03e9c9a388a511b6125756097eee523742a",
+                "author": "neuralsorcerer",
+                "message": "fix: `meta_sep` token and add to registry",
+                "files_changed": 1
+            },
+            {
+                "sha": "c044bf33f7e835ca6a723ccc97848de25dba5164",
+                "author": "neuralsorcerer",
+                "message": "fix: `meta_sep` token in `encoding.rs`",
+                "files_changed": 1
+            },
+            {
+                "sha": "b255cbeb6274adbea774f26fd9590922ce8874ed",
+                "author": "scott-oai",
+                "message": "Merge pull request #18 from openai/dev/scl/better-ci",
+                "files_changed": 6
+            }
+        ],
+        "pr/41-amirhosseinghanipour-fix-race-conditions-and-offline-api": [
+            {
+                "sha": "1dca6392934bf4e3c403b2ecc2104e8ff3f67f45",
+                "author": "amirhosseinghanipour",
+                "message": "fix race conditions and add offline tokenizer loading api",
+                "files_changed": 8
+            },
+            {
+                "sha": "9528c7b4a00a3307fd9685fc1328aee11c3d9c90",
+                "author": "scott-oai",
+                "message": "version bump",
+                "files_changed": 2
+            },
+            {
+                "sha": "82b3afb9eb043343f322c937262cc50405e892c3",
+                "author": "scott-oai",
+                "message": "Merge pull request #26 from jordan-wu-97/jordan/fix-function-call-atomic-bool",
+                "files_changed": 6
+            }
+        ]
+    }
+    
     try:
         data = json.loads(content)
-        required_branches = [
-            "main",
-            "pr/25-neuralsorcerer-patch-1", 
-            "pr/41-amirhosseinghanipour-fix-race-conditions-and-offline-api"
-        ]
         
-        for branch in required_branches:
+        # Check if all required branches are present
+        for branch in expected_data.keys():
             if branch not in data:
                 print(f"Missing branch {branch} in BRANCH_COMMITS.json", file=sys.stderr)
                 return False
-            
-            commits = data[branch]
-            if len(commits) != 3:
-                print(f"Branch {branch} should have exactly 3 commits, found {len(commits)}", file=sys.stderr)
+        
+        # Verify the exact content matches expected data
+        for branch, expected_commits in expected_data.items():
+            actual_commits = data.get(branch, [])
+            if len(actual_commits) != 3:
+                print(f"Branch {branch} should have exactly 3 commits, found {len(actual_commits)}", file=sys.stderr)
                 return False
             
-            for commit in commits:
-                required_fields = ["sha", "author", "message", "files_changed"]
-                for field in required_fields:
-                    if field not in commit:
-                        print(f"Missing field {field} in commit for branch {branch}", file=sys.stderr)
-                        return False
-                
-                if not isinstance(commit["files_changed"], int):
-                    print(f"files_changed should be integer for branch {branch}", file=sys.stderr)
+            for i, expected_commit in enumerate(expected_commits):
+                if i >= len(actual_commits):
+                    print(f"Missing commit {i+1} for branch {branch}", file=sys.stderr)
                     return False
+                
+                actual_commit = actual_commits[i]
+                for field in ["sha", "author", "message", "files_changed"]:
+                    if actual_commit.get(field) != expected_commit.get(field):
+                        print(f"Mismatch in {field} for commit {i+1} in branch {branch}", file=sys.stderr)
+                        print(f"Expected: {expected_commit.get(field)}, Got: {actual_commit.get(field)}", file=sys.stderr)
+                        return False
         
         return True
     except json.JSONDecodeError as e:
@@ -85,70 +146,69 @@ def _check_branch_commits_json(content: str) -> bool:
 
 
 def _check_cross_branch_analysis(content: str) -> bool:
-    """Verify CROSS_BRANCH_ANALYSIS.md contains required sections and keywords."""
-    required_sections = [
-        "## Unique Contributors",
-        "## Commit Statistics", 
-        "## Files Modified in Multiple Branches"
-    ]
-    
-    required_keywords = [
-        "contributors",
-        "total commits",
-        "modified across branches"
-    ]
-    
-    for section in required_sections:
-        if section not in content:
-            print(f"Missing section '{section}' in CROSS_BRANCH_ANALYSIS.md", file=sys.stderr)
-            return False
-    
-    content_lower = content.lower()
-    for keyword in required_keywords:
-        if keyword.lower() not in content_lower:
-            print(f"Missing keyword '{keyword}' in CROSS_BRANCH_ANALYSIS.md", file=sys.stderr)
-            return False
-    
-    return True
-
-
-def _check_merge_timeline(content: str, headers: Dict[str, str]) -> bool:
-    """Verify MERGE_TIMELINE.txt has correct format and contains actual merge commits."""
-    lines = content.strip().split('\n')
-    if len(lines) == 0:
-        print("MERGE_TIMELINE.txt is empty", file=sys.stderr)
+    """Verify CROSS_BRANCH_ANALYSIS.md contains required sections and data."""
+    # Check for required section header
+    if "## Top Contributors" not in content:
+        print("Missing section '## Top Contributors' in CROSS_BRANCH_ANALYSIS.md", file=sys.stderr)
         return False
     
-    # Check format: DATE | MERGE_COMMIT_MESSAGE | COMMIT_SHA
-    # Date pattern | Any message | SHA pattern
-    pattern = r'^(\d{4}-\d{2}-\d{2}).*\|\s*(.*)\|\s*([a-f0-9]{7,40})$'
+    # Check for required keyword
+    if "contributors" not in content.lower():
+        print("Missing keyword 'contributors' in CROSS_BRANCH_ANALYSIS.md", file=sys.stderr)
+        return False
     
-    for i, line in enumerate(lines):
-        match = re.match(pattern, line, re.IGNORECASE)
-        if not match:
-            print(f"Invalid format in MERGE_TIMELINE.txt line {i+1}: {line}", file=sys.stderr)
-            print("Expected format: DATE | MERGE_COMMIT_MESSAGE | COMMIT_SHA", file=sys.stderr)
-            return False
-        
-        # Extract the SHA and verify it's actually a merge commit (has 2 parents)
-        sha = match.group(3)
-        success, commit_data = _get_github_api(f"commits/{sha}", headers)
-        if not success:
-            print(f"Could not verify commit {sha}", file=sys.stderr)
-            return False
-        
-        parents = commit_data.get("parents", [])
-        if len(parents) != 2:
-            print(f"Commit {sha} is not a merge commit (has {len(parents)} parents, expected 2)", file=sys.stderr)
+    # Verify the top 5 contributors with correct counts (order matters)
+    expected_contributors = [
+        "scott-oai: 217 commits",
+        "RustedBytes: 28 commits", 
+        "zhli1142015: 14 commits",
+        "michaelfeil: 7 commits",
+        "y-asha: 7 commits"
+    ]
+    
+    for contributor in expected_contributors:
+        if contributor not in content:
+            print(f"Missing or incorrect contributor entry: {contributor}", file=sys.stderr)
             return False
     
     return True
 
 
-def _find_pr_by_title(title: str, headers: Dict[str, str], org: str, repo: str = "harmony") -> Optional[Dict]:
+def _check_merge_timeline(content: str) -> bool:
+    """Verify MERGE_TIMELINE.txt has correct format and expected merge commits."""
+    expected_timeline = [
+        "2025-08-06 | Merge pull request #29 from axion66/improve-readme-and-checks | 3efbf742533a375fc148d75513597e139329578b",
+        "2025-08-06 | Merge pull request #30 from Yuan-ManX/harmony-format | 9d653a4c7382abc42d115014d195d9354e7ad357",
+        "2025-08-06 | Merge pull request #28 from dkqjrm/fix-typo-format-md | 161e5fe2a57c63e9f8353c4c5b8faa3c3854bb5f",
+        "2025-08-05 | Merge pull request #26 from jordan-wu-97/jordan/fix-function-call-atomic-bool | 82b3afb9eb043343f322c937262cc50405e892c3",
+        "2025-08-05 | Merge pull request #18 from openai/dev/scl/better-ci | b255cbeb6274adbea774f26fd9590922ce8874ed",
+        "2025-08-05 | Merge pull request #21 from Tialo/main | 058ef3257c24fb099aac7960c10ce51c8e55d9fe",
+        "2025-08-05 | Merge branch 'main' into dev/scl/better-ci | 6375a15ea1b0a486cbb1468964cf8f5800ff5a5c",
+        "2025-08-05 | Merge pull request #8 from RustedBytes/main | f6179119ca894eda4124c86d408c01fdbf5281f0",
+        "2025-08-05 | Merge branch 'main' into main | eb86106b6980790b94f5702dc510483c66027277",
+        "2025-08-05 | Merge pull request #17 from openai/dev/scl/add-docs-to-cargo | 64bca4cf327ebeafa0bbd0345650d86e2d02142f"
+    ]
+    
+    lines = content.strip().split('\n')
+    if len(lines) != 10:
+        print(f"MERGE_TIMELINE.txt should have exactly 10 lines, found {len(lines)}", file=sys.stderr)
+        return False
+    
+    # Verify each line matches expected format and content
+    for i, (actual_line, expected_line) in enumerate(zip(lines, expected_timeline)):
+        if actual_line.strip() != expected_line:
+            print(f"Mismatch at line {i+1} in MERGE_TIMELINE.txt", file=sys.stderr)
+            print(f"Expected: {expected_line}", file=sys.stderr)
+            print(f"Got: {actual_line.strip()}", file=sys.stderr)
+            return False
+    
+    return True
+
+
+def _find_pr_by_title(title: str, headers: Dict[str, str]) -> Optional[Dict]:
     """Find a PR by exact title."""
     for state in ["open", "closed"]:
-        success, prs = _get_github_api(f"pulls?state={state}&per_page=100", headers, org, repo)
+        success, prs = _get_github_api(f"pulls?state={state}&per_page=100", headers)
         if success and prs:
             for pr in prs:
                 if pr.get("title", "") == title:
@@ -156,39 +216,31 @@ def _find_pr_by_title(title: str, headers: Dict[str, str], org: str, repo: str =
     return None
 
 
-def _check_pr_body_format(pr_body: str) -> Tuple[bool, str]:
-    """Check if PR body contains required format and extract values."""
+def _check_pr_body_format(pr_body: str) -> bool:
+    """Check if PR body contains required format with exact values."""
     if not pr_body:
-        return False, "PR body is empty"
+        print("PR body is empty", file=sys.stderr)
+        return False
     
     required_lines = [
         "Total branches analyzed: 7",
-        r"Total unique contributors: \d+",
-        r"Most modified file: .+"
+        "Top contributor: scott-oai"      # Based on the provided data
     ]
     
-    for pattern in required_lines:
-        if not re.search(pattern, pr_body):
-            return False, f"Missing or incorrect format for: {pattern}"
+    for line in required_lines:
+        if line not in pr_body:
+            print(f"Missing required line in PR body: {line}", file=sys.stderr)
+            return False
     
-    return True, "PR body format is correct"
+    return True
 
 
 def verify_task() -> bool:
     """Verify the multi-branch commit aggregation task."""
-    # Load environment variables from .mcp_env
-    load_dotenv(".mcp_env")
-    
-    # Get GitHub token and org
+    # Get GitHub token from environment
     github_token = os.environ.get("GITHUB_TOKEN")
-    github_org = os.environ.get("GITHUB_EVAL_ORG")
-    
     if not github_token:
         print("Error: GITHUB_TOKEN environment variable not set", file=sys.stderr)
-        return False
-    
-    if not github_org:
-        print("Error: GITHUB_EVAL_ORG environment variable not set", file=sys.stderr)
         return False
     
     headers = {
@@ -197,13 +249,13 @@ def verify_task() -> bool:
     }
     
     # 1. Check if branch 'history-report-2025' exists
-    if not _check_branch_exists("history-report-2025", headers, github_org):
+    if not _check_branch_exists("history-report-2025", headers):
         print("Branch 'history-report-2025' does not exist", file=sys.stderr)
         return False
     print("✓ Branch 'history-report-2025' exists")
     
     # 2. Check BRANCH_COMMITS.json
-    content = _get_file_content("history-report-2025", "BRANCH_COMMITS.json", headers, github_org)
+    content = _get_file_content("history-report-2025", "BRANCH_COMMITS.json", headers)
     if not content:
         print("File 'BRANCH_COMMITS.json' not found in 'history-report-2025' branch", file=sys.stderr)
         return False
@@ -213,27 +265,27 @@ def verify_task() -> bool:
     print("✓ BRANCH_COMMITS.json has correct structure and data")
     
     # 3. Check CROSS_BRANCH_ANALYSIS.md
-    content = _get_file_content("history-report-2025", "CROSS_BRANCH_ANALYSIS.md", headers, github_org)
+    content = _get_file_content("history-report-2025", "CROSS_BRANCH_ANALYSIS.md", headers)
     if not content:
         print("File 'CROSS_BRANCH_ANALYSIS.md' not found in 'history-report-2025' branch", file=sys.stderr)
         return False
     
     if not _check_cross_branch_analysis(content):
         return False
-    print("✓ CROSS_BRANCH_ANALYSIS.md contains required sections and keywords")
+    print("✓ CROSS_BRANCH_ANALYSIS.md contains required sections and data")
     
     # 4. Check MERGE_TIMELINE.txt
-    content = _get_file_content("history-report-2025", "MERGE_TIMELINE.txt", headers, github_org)
+    content = _get_file_content("history-report-2025", "MERGE_TIMELINE.txt", headers)
     if not content:
         print("File 'MERGE_TIMELINE.txt' not found in 'history-report-2025' branch", file=sys.stderr)
         return False
     
-    if not _check_merge_timeline(content, headers):
+    if not _check_merge_timeline(content):
         return False
-    print("✓ MERGE_TIMELINE.txt has correct format and contains actual merge commits")
+    print("✓ MERGE_TIMELINE.txt has correct format and data")
     
     # 5. Check pull request
-    pr = _find_pr_by_title("Cross-Branch Commit Analysis Report", headers, github_org)
+    pr = _find_pr_by_title("Cross-Branch Commit Analysis Report", headers)
     if not pr:
         print("Pull request with title 'Cross-Branch Commit Analysis Report' not found", file=sys.stderr)
         return False
@@ -241,11 +293,9 @@ def verify_task() -> bool:
     
     # 6. Check PR body format
     pr_body = pr.get("body", "")
-    valid, message = _check_pr_body_format(pr_body)
-    if not valid:
-        print(f"PR body format error: {message}", file=sys.stderr)
+    if not _check_pr_body_format(pr_body):
         return False
-    print("✓ Pull request body has correct format")
+    print("✓ Pull request body has correct format and data")
     
     # 7. Verify PR is from correct branch to main
     if pr.get("head", {}).get("ref") != "history-report-2025":
