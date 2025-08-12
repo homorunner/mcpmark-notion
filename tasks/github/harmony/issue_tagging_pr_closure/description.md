@@ -84,4 +84,3 @@ Close the original issue by updating its state to 'closed' with state_reason 'no
 - "architectural constraints"
 - "future implementation blocked"
 - "requires core redesign"
-Also explain that while the enhancement is valuable, current technical constraints make implementation not feasible.

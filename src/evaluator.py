@@ -199,6 +199,7 @@ class MCPEvaluator:
         
         # Stage 4: Clean up the temporary task state
         logger.info("\n==================== Stage 4: Cleaning Up =========================")
+        import pdb; pdb.set_trace()
         self.state_manager.clean_up(task)
 
         return result

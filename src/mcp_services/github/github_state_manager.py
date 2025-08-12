@@ -96,6 +96,7 @@ class GitHubStateManager(BaseStateManager):
             "mixeval": "JinjieNi-MixEval",
             "harmony": "openai-harmony",
             "claude-code": "anthropics-claude-code",
+            "easyr1": "hiyouga-EasyR1",
         }
 
     # =========================================================================

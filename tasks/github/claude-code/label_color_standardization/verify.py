@@ -2,11 +2,12 @@ import sys
 import os
 import requests
 from typing import Dict, List, Optional, Tuple
+from dotenv import load_dotenv
 
 
-def _get_github_api(endpoint: str, headers: Dict[str, str]) -> Tuple[bool, Optional[Dict]]:
+def _get_github_api(endpoint: str, headers: Dict[str, str], org: str, repo: str = "claude-code") -> Tuple[bool, Optional[Dict]]:
     """Make a GET request to GitHub API and return (success, response)."""
-    url = f"https://api.github.com/repos/mcpleague-eval/claude-code/{endpoint}"
+    url = f"https://api.github.com/repos/{org}/{repo}/{endpoint}"
     try:
         response = requests.get(url, headers=headers)
         if response.status_code == 200:
@@ -21,12 +22,12 @@ def _get_github_api(endpoint: str, headers: Dict[str, str]) -> Tuple[bool, Optio
         return False, None
 
 
-def _get_all_labels(headers: Dict[str, str]) -> List[Dict]:
+def _get_all_labels(headers: Dict[str, str], org: str, repo: str = "claude-code") -> List[Dict]:
     """Get all labels in the repository."""
     all_labels = []
     page = 1
     while True:
-        success, labels = _get_github_api(f"labels?page={page}&per_page=100", headers)
+        success, labels = _get_github_api(f"labels?page={page}&per_page=100", headers, org, repo)
         if not success or not labels:
             break
         all_labels.extend(labels)
@@ -36,16 +37,16 @@ def _get_all_labels(headers: Dict[str, str]) -> List[Dict]:
     return all_labels
 
 
-def _check_branch_exists(branch_name: str, headers: Dict[str, str]) -> bool:
+def _check_branch_exists(branch_name: str, headers: Dict[str, str], org: str, repo: str = "claude-code") -> bool:
     """Verify that a branch exists in the repository."""
-    success, _ = _get_github_api(f"branches/{branch_name}", headers)
+    success, _ = _get_github_api(f"branches/{branch_name}", headers, org, repo)
     return success
 
 
-def _check_file_content(branch: str, file_path: str, headers: Dict[str, str]) -> Optional[str]:
+def _check_file_content(branch: str, file_path: str, headers: Dict[str, str], org: str, repo: str = "claude-code") -> Optional[str]:
     """Get file content from a branch."""
     import base64
-    success, result = _get_github_api(f"contents/{file_path}?ref={branch}", headers)
+    success, result = _get_github_api(f"contents/{file_path}?ref={branch}", headers, org, repo)
     if not success or not result:
         return None
     
@@ -92,10 +93,10 @@ def _parse_label_table(content: str) -> Dict[str, str]:
     return label_colors
 
 
-def _find_issue_by_title_keywords(title_keywords: List[str], headers: Dict[str, str]) -> Optional[Dict]:
+def _find_issue_by_title_keywords(title_keywords: List[str], headers: Dict[str, str], org: str, repo: str = "claude-code") -> Optional[Dict]:
     """Find an issue by title keywords and return the issue data."""
     for state in ["open", "closed"]:
-        success, issues = _get_github_api(f"issues?state={state}&per_page=100", headers)
+        success, issues = _get_github_api(f"issues?state={state}&per_page=100", headers, org, repo)
         if success and issues:
             for issue in issues:
                 # Skip pull requests
@@ -107,10 +108,10 @@ def _find_issue_by_title_keywords(title_keywords: List[str], headers: Dict[str, 
     return None
 
 
-def _find_pr_by_title_keywords(title_keywords: List[str], headers: Dict[str, str]) -> Optional[Dict]:
+def _find_pr_by_title_keywords(title_keywords: List[str], headers: Dict[str, str], org: str, repo: str = "claude-code") -> Optional[Dict]:
     """Find a PR by title keywords and return the PR data."""
     for state in ["open", "closed"]:
-        success, prs = _get_github_api(f"pulls?state={state}&per_page=100", headers)
+        success, prs = _get_github_api(f"pulls?state={state}&per_page=100", headers, org, repo)
         if success and prs:
             for pr in prs:
                 title = pr.get("title", "").lower()
@@ -119,17 +120,17 @@ def _find_pr_by_title_keywords(title_keywords: List[str], headers: Dict[str, str
     return None
 
 
-def _get_issue_comments(issue_number: int, headers: Dict[str, str]) -> List[Dict]:
+def _get_issue_comments(issue_number: int, headers: Dict[str, str], org: str, repo: str = "claude-code") -> List[Dict]:
     """Get all comments for an issue."""
-    success, comments = _get_github_api(f"issues/{issue_number}/comments", headers)
+    success, comments = _get_github_api(f"issues/{issue_number}/comments", headers, org, repo)
     if success and comments:
         return comments
     return []
 
 
-def _get_all_repo_labels(headers: Dict[str, str]) -> List[str]:
+def _get_all_repo_labels(headers: Dict[str, str], org: str, repo: str = "claude-code") -> List[str]:
     """Get all label names in the repository."""
-    all_labels = _get_all_labels(headers)
+    all_labels = _get_all_labels(headers, org, repo)
     return [label["name"] for label in all_labels]
 
 
@@ -138,6 +139,21 @@ def verify() -> bool:
     Programmatically verify that the label color standardization workflow meets the 
     requirements described in description.md.
     """
+    # Load environment variables from .mcp_env
+    load_dotenv(".mcp_env")
+    
+    # Get GitHub token and org
+    github_token = os.environ.get("GITHUB_TOKEN")
+    github_org = os.environ.get("GITHUB_EVAL_ORG")
+    
+    if not github_token:
+        print("Error: GITHUB_TOKEN environment variable not set", file=sys.stderr)
+        return False
+    
+    if not github_org:
+        print("Error: GITHUB_EVAL_ORG environment variable not set", file=sys.stderr)
+        return False
+    
     # Configuration constants
     BRANCH_NAME = "feat/label-color-guide"
     
@@ -158,12 +174,6 @@ def verify() -> bool:
         "area:packaging", "has repro", "memory", "perf:memory"
     ]
     
-    # Get GitHub token
-    github_token = os.environ.get("GITHUB_TOKEN")
-    if not github_token:
-        print("Error: GITHUB_TOKEN environment variable not set", file=sys.stderr)
-        return False
-    
     headers = {
         "Authorization": f"token {github_token}",
         "Accept": "application/vnd.github.v3+json"
@@ -174,13 +184,13 @@ def verify() -> bool:
     
     # 1. Check that feature branch exists
     print("1. Verifying feature branch exists...")
-    if not _check_branch_exists(BRANCH_NAME, headers):
+    if not _check_branch_exists(BRANCH_NAME, headers, github_org):
         print(f"Error: Branch '{BRANCH_NAME}' not found", file=sys.stderr)
         return False
     
     # 2. Check documentation file exists and has correct format
     print("2. Verifying label color documentation file...")
-    doc_content = _check_file_content(BRANCH_NAME, "docs/LABEL_COLORS.md", headers)
+    doc_content = _check_file_content(BRANCH_NAME, "docs/LABEL_COLORS.md", headers, github_org)
     if not doc_content:
         print("Error: docs/LABEL_COLORS.md not found", file=sys.stderr)
         return False
@@ -193,7 +203,7 @@ def verify() -> bool:
     
     # 3. Verify actual label colors match documentation
     print("3. Verifying label colors have been updated...")
-    actual_labels = _get_all_labels(headers)
+    actual_labels = _get_all_labels(headers, github_org)
     label_color_map = {label["name"]: label["color"] for label in actual_labels}
     
     # Check that no labels are using default gray (#ededed)
@@ -225,7 +235,7 @@ def verify() -> bool:
     
     # 5. Find the created issue
     print("5. Verifying issue creation...")
-    issue = _find_issue_by_title_keywords(ISSUE_TITLE_KEYWORDS, headers)
+    issue = _find_issue_by_title_keywords(ISSUE_TITLE_KEYWORDS, headers, github_org)
     if not issue:
         print(f"Error: Issue with title containing required keywords not found", file=sys.stderr)
         return False
@@ -240,7 +250,7 @@ def verify() -> bool:
     
     # 6. Find the created PR
     print("6. Verifying pull request creation...")
-    pr = _find_pr_by_title_keywords(PR_TITLE_KEYWORDS, headers)
+    pr = _find_pr_by_title_keywords(PR_TITLE_KEYWORDS, headers, github_org)
     if not pr:
         print(f"Error: PR with title containing required keywords not found", file=sys.stderr)
         return False
@@ -257,7 +267,7 @@ def verify() -> bool:
     # 7. Verify issue has ALL labels applied (demonstrates color scheme)
     print("7. Verifying issue has all labels applied...")
     issue_label_names = [label["name"] for label in issue.get("labels", [])]
-    all_repo_labels = _get_all_repo_labels(headers)
+    all_repo_labels = _get_all_repo_labels(headers, github_org)
     missing_labels = []
     
     for repo_label in all_repo_labels:
@@ -281,7 +291,7 @@ def verify() -> bool:
     
     # 9. Verify issue has comment documenting changes
     print("9. Verifying issue comment with color updates...")
-    issue_comments = _get_issue_comments(issue_number, headers)
+    issue_comments = _get_issue_comments(issue_number, headers, github_org)
     
     found_update_comment = False
     for comment in issue_comments:

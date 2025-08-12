@@ -29,7 +29,6 @@ import logging
 import os
 from dotenv import load_dotenv
 import subprocess
-import sys
 from pathlib import Path
 from tempfile import mkdtemp
 from typing import Optional
@@ -51,6 +50,7 @@ _DEFAULT_HEADERS = {
 # Helper utilities
 # ---------------------------------------------------------------------------
 
+
 def _make_session(token: Optional[str] = None) -> requests.Session:
     sess = requests.Session()
     sess.headers.update(_DEFAULT_HEADERS)
@@ -70,6 +70,7 @@ def _parse_repo(url: str) -> tuple[str, str]:
 # ---------------------------------------------------------------------------
 # Core export logic
 # ---------------------------------------------------------------------------
+
 
 def export_repository(
     source_repo_url: str,
@@ -150,11 +151,15 @@ def export_repository(
     def _fetch_issue_comments(number: int) -> list[dict]:
         """Return a list of {user, body} comment dicts for the given issue/PR."""
         comments = []
-        for c in _paginate(f"{_API_ROOT}/repos/{owner}/{repo}/issues/{number}/comments"):
-            comments.append({
-                "user": c.get("user", {}).get("login", "unknown"),
-                "body": c.get("body", ""),
-            })
+        for c in _paginate(
+            f"{_API_ROOT}/repos/{owner}/{repo}/issues/{number}/comments"
+        ):
+            comments.append(
+                {
+                    "user": c.get("user", {}).get("login", "unknown"),
+                    "body": c.get("body", ""),
+                }
+            )
         return comments
 
     # --------------------------------------------------------------
@@ -164,10 +169,12 @@ def export_repository(
         """Return a list of {user, body} review comments for the given PR."""
         comments = []
         for c in _paginate(f"{_API_ROOT}/repos/{owner}/{repo}/pulls/{number}/comments"):
-            comments.append({
-                "user": c.get("user", {}).get("login", "unknown"),
-                "body": c.get("body", ""),
-            })
+            comments.append(
+                {
+                    "user": c.get("user", {}).get("login", "unknown"),
+                    "body": c.get("body", ""),
+                }
+            )
         return comments
 
     # Issues (non-PR)
@@ -177,18 +184,21 @@ def export_repository(
         logger.info("[export] Skipping issues (max_issues=0)")
     else:
         for itm in _paginate(
-                f"{_API_ROOT}/repos/{owner}/{repo}/issues",
-                extra_params={"sort": "created", "direction": "desc"}):
+            f"{_API_ROOT}/repos/{owner}/{repo}/issues",
+            extra_params={"sort": "created", "direction": "desc"},
+        ):
             if "pull_request" in itm:
                 continue
-            issues.append({
-                "title": itm.get("title"),
-                "body": itm.get("body", ""),
-                "labels": [lbl.get("name") for lbl in itm.get("labels", [])],
-                "state": itm.get("state", "open"),  # Store issue state
-                "number": itm.get("number"),  # Store issue number for reference
-                "comments": _fetch_issue_comments(itm.get("number")),
-            })
+            issues.append(
+                {
+                    "title": itm.get("title"),
+                    "body": itm.get("body", ""),
+                    "labels": [lbl.get("name") for lbl in itm.get("labels", [])],
+                    "state": itm.get("state", "open"),  # Store issue state
+                    "number": itm.get("number"),  # Store issue number for reference
+                    "comments": _fetch_issue_comments(itm.get("number")),
+                }
+            )
 
             if max_issues is not None and len(issues) >= max_issues:
                 break
@@ -205,9 +215,10 @@ def export_repository(
         logger.info("[export] Skipping pull requests (max_pulls=0)")
     else:
         for pr in _paginate(
-                f"{_API_ROOT}/repos/{owner}/{repo}/pulls",
-                state="open",
-                extra_params={"sort": "created", "direction": "desc"}):
+            f"{_API_ROOT}/repos/{owner}/{repo}/pulls",
+            state="open",
+            extra_params={"sort": "created", "direction": "desc"},
+        ):
             pr_number = pr.get("number")
             head = pr.get("head", {})
             if head is None:
@@ -266,34 +277,115 @@ def export_repository(
     (repo_dir / "pulls.json").write_text(json.dumps(pulls, indent=2))
     logger.info("[export] Saved %d pull requests", len(pulls))
 
+    # Get default branch info first (needed for fetching)
+    sess = _make_session(github_token)
+    try:
+        repo_info = sess.get(f"{_API_ROOT}/repos/{owner}/{repo}")
+        default_branch = repo_info.json().get("default_branch", "main")
+    except Exception:
+        default_branch = "main"
+
+    # Fetch branches from non-fork PRs (branches from the same repository)
+    non_fork_branches = list(pr_head_refs)  # These are branches from the same repo
+    # Always include the default branch in the branches to fetch
+    if default_branch not in non_fork_branches:
+        non_fork_branches.append(default_branch)
+        pr_head_refs.add(default_branch)
+
+    if non_fork_branches:
+        logger.info(
+            "[fetch] Fetching %d branches from same repository (including default branch '%s')",
+            len(non_fork_branches),
+            default_branch,
+        )
+        try:
+            # Fetch all remote branches to ensure we have the PR branches
+            subprocess.run(
+                ["git", "-C", str(repo_path), "fetch", "origin", "--no-tags"],
+                check=True,
+                capture_output=True,
+            )
+
+            # Create local branches for each PR branch
+            for branch in non_fork_branches:
+                try:
+                    # Create local branch tracking the remote branch
+                    subprocess.run(
+                        [
+                            "git",
+                            "-C",
+                            str(repo_path),
+                            "branch",
+                            "--track",
+                            branch,
+                            f"origin/{branch}",
+                        ],
+                        check=False,
+                        capture_output=True,
+                    )  # check=False because branch might already exist
+                    logger.info("[fetch] Created local branch %s", branch)
+                except subprocess.CalledProcessError:
+                    # Branch might already exist, which is fine
+                    pass
+
+        except subprocess.CalledProcessError as e:
+            logger.warning(
+                "[fetch] Failed to fetch branches from origin: %s",
+                e.stderr.decode(errors="ignore") if e.stderr else str(e),
+            )
+
     # Fetch branches from forks for PRs
     if fork_pr_branches:
-        logger.info("[fetch] Fetching branches from %d forked PRs", len(fork_pr_branches))
+        logger.info(
+            "[fetch] Fetching branches from %d forked PRs", len(fork_pr_branches)
+        )
 
         for branch_name, fork_info in fork_pr_branches.items():
             try:
-                logger.info("[fetch] Fetching branch %s from fork %s", fork_info["ref"], fork_info["clone_url"])
+                logger.info(
+                    "[fetch] Fetching branch %s from fork %s",
+                    fork_info["ref"],
+                    fork_info["clone_url"],
+                )
 
                 # Add fork as remote and fetch the specific branch
                 remote_name = f"fork-pr-{fork_info['pr_number']}"
 
                 # Add remote
-                subprocess.run([
-                    "git", "-C", str(repo_path),
-                    "remote", "add", remote_name, fork_info["clone_url"]
-                ], check=True, capture_output=True)
+                subprocess.run(
+                    [
+                        "git",
+                        "-C",
+                        str(repo_path),
+                        "remote",
+                        "add",
+                        remote_name,
+                        fork_info["clone_url"],
+                    ],
+                    check=True,
+                    capture_output=True,
+                )
 
                 # Fetch the specific branch from the fork
-                subprocess.run([
-                    "git", "-C", str(repo_path),
-                    "fetch", remote_name, f"{fork_info['ref']}:refs/heads/{branch_name}"
-                ], check=True, capture_output=True)
+                subprocess.run(
+                    [
+                        "git",
+                        "-C",
+                        str(repo_path),
+                        "fetch",
+                        remote_name,
+                        f"{fork_info['ref']}:refs/heads/{branch_name}",
+                    ],
+                    check=True,
+                    capture_output=True,
+                )
 
                 # Remove the remote after fetching
-                subprocess.run([
-                    "git", "-C", str(repo_path),
-                    "remote", "remove", remote_name
-                ], check=True, capture_output=True)
+                subprocess.run(
+                    ["git", "-C", str(repo_path), "remote", "remove", remote_name],
+                    check=True,
+                    capture_output=True,
+                )
 
                 # Add the fork branch to pr_head_refs so it gets pushed
                 pr_head_refs.add(branch_name)
@@ -301,18 +393,17 @@ def export_repository(
                 logger.info("[fetch] Successfully fetched branch %s", branch_name)
 
             except subprocess.CalledProcessError as e:
-                logger.warning("[fetch] Failed to fetch branch from fork PR #%s: %s",
-                             fork_info['pr_number'], e.stderr.decode(errors="ignore") if e.stderr else str(e))
+                logger.warning(
+                    "[fetch] Failed to fetch branch from fork PR #%s: %s",
+                    fork_info["pr_number"],
+                    e.stderr.decode(errors="ignore") if e.stderr else str(e),
+                )
             except Exception as e:
-                logger.warning("[fetch] Unexpected error fetching fork PR #%s: %s",
-                             fork_info['pr_number'], str(e))
-
-    # Fetch default branch (used later by importer)
-    try:
-        repo_info = sess.get(f"{_API_ROOT}/repos/{owner}/{repo}")
-        default_branch = repo_info.json().get("default_branch", "main")
-    except Exception:
-        default_branch = "main"
+                logger.warning(
+                    "[fetch] Unexpected error fetching fork PR #%s: %s",
+                    fork_info["pr_number"],
+                    str(e),
+                )
 
     meta = {
         "owner": owner,
@@ -334,13 +425,31 @@ if __name__ == "__main__":
 
     load_dotenv(".mcp_env")
 
-    parser = argparse.ArgumentParser(description="Export public GitHub repository with Issues/PRs")
-    parser.add_argument("--source_repo_url", required=True, help="HTTPS URL of the public repository")
-    parser.add_argument("--out-dir", default="./github_state", help="Output directory root")
-    parser.add_argument("--max-issues", type=int, default=50, help="Export only the latest N issues (optional)")
-    parser.add_argument("--max-pulls", type=int, default=20, help="Export only the latest N pull requests (optional)")
+    parser = argparse.ArgumentParser(
+        description="Export public GitHub repository with Issues/PRs"
+    )
+    parser.add_argument(
+        "--source_repo_url", required=True, help="HTTPS URL of the public repository"
+    )
+    parser.add_argument(
+        "--out-dir", default="./github_state", help="Output directory root"
+    )
+    parser.add_argument(
+        "--max-issues",
+        type=int,
+        default=50,
+        help="Export only the latest N issues (optional)",
+    )
+    parser.add_argument(
+        "--max-pulls",
+        type=int,
+        default=20,
+        help="Export only the latest N pull requests (optional)",
+    )
     args = parser.parse_args()
 
     token = os.getenv("GITHUB_TOKEN")
 
-    export_repository(args.source_repo_url, args.out_dir, token, args.max_issues, args.max_pulls)
+    export_repository(
+        args.source_repo_url, args.out_dir, token, args.max_issues, args.max_pulls
+    )

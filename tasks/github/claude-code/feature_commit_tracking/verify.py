@@ -4,11 +4,12 @@ import requests
 from typing import Dict, List, Optional, Tuple
 import base64
 import re
+from dotenv import load_dotenv
 
 
-def _get_github_api(endpoint: str, headers: Dict[str, str]) -> Tuple[bool, Optional[Dict]]:
+def _get_github_api(endpoint: str, headers: Dict[str, str], org: str, repo: str = "claude-code") -> Tuple[bool, Optional[Dict]]:
     """Make a GET request to GitHub API and return (success, response)."""
-    url = f"https://api.github.com/repos/mcpleague-eval/claude-code/{endpoint}"
+    url = f"https://api.github.com/repos/{org}/{repo}/{endpoint}"
     try:
         response = requests.get(url, headers=headers)
         if response.status_code == 200:
@@ -23,9 +24,9 @@ def _get_github_api(endpoint: str, headers: Dict[str, str]) -> Tuple[bool, Optio
         return False, None
 
 
-def _get_file_content(file_path: str, headers: Dict[str, str], ref: str = "main") -> Optional[str]:
+def _get_file_content(file_path: str, headers: Dict[str, str], org: str, repo: str = "claude-code", ref: str = "main") -> Optional[str]:
     """Get the content of a file from the repository."""
-    success, result = _get_github_api(f"contents/{file_path}?ref={ref}", headers)
+    success, result = _get_github_api(f"contents/{file_path}?ref={ref}", headers, org, repo)
     if not success or not result:
         return None
     
@@ -37,9 +38,9 @@ def _get_file_content(file_path: str, headers: Dict[str, str], ref: str = "main"
         return None
 
 
-def _verify_commit_exists(commit_sha: str, headers: Dict[str, str]) -> Tuple[bool, Optional[Dict]]:
+def _verify_commit_exists(commit_sha: str, headers: Dict[str, str], org: str, repo: str = "claude-code") -> Tuple[bool, Optional[Dict]]:
     """Verify that a commit exists and return its details."""
-    success, commit_data = _get_github_api(f"commits/{commit_sha}", headers)
+    success, commit_data = _get_github_api(f"commits/{commit_sha}", headers, org, repo)
     return success, commit_data
 
 
@@ -90,10 +91,19 @@ def _parse_feature_table(content: str) -> List[Dict]:
 
 def verify_task() -> bool:
     """Verify the feature commit tracking task."""
-    # Get GitHub token from environment
+    # Load environment variables from .mcp_env
+    load_dotenv(".mcp_env")
+    
+    # Get GitHub token and org
     github_token = os.environ.get("GITHUB_TOKEN")
+    github_org = os.environ.get("GITHUB_EVAL_ORG")
+    
     if not github_token:
         print("Error: GITHUB_TOKEN environment variable not set", file=sys.stderr)
+        return False
+    
+    if not github_org:
+        print("Error: GITHUB_EVAL_ORG environment variable not set", file=sys.stderr)
         return False
     
     headers = {
@@ -133,7 +143,7 @@ def verify_task() -> bool:
     
     # 1. Check if FEATURE_COMMITS.md exists in main branch
     print("1. Checking if FEATURE_COMMITS.md exists...")
-    content = _get_file_content("FEATURE_COMMITS.md", headers)
+    content = _get_file_content("FEATURE_COMMITS.md", headers, github_org)
     if not content:
         print("Error: FEATURE_COMMITS.md not found in main branch", file=sys.stderr)
         return False
@@ -183,7 +193,7 @@ def verify_task() -> bool:
     print("5. Verifying commit details...")
     for feature in features:
         if feature['sha'] in expected_features.values():
-            success, commit_data = _verify_commit_exists(feature['sha'], headers)
+            success, commit_data = _verify_commit_exists(feature['sha'], headers, github_org)
             if not success:
                 print(f"Error: Commit {feature['sha']} not found", file=sys.stderr)
                 return False
