@@ -16,6 +16,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Dict, Any
+from urllib.parse import urlparse
+import os
 
 import requests
 
@@ -28,18 +30,18 @@ logger = get_logger(__name__)
 
 @dataclass
 class DockerConfig:
-    image_name: str = "postmill-populated-exposed-withimg"
+    image_name: str = "shopping_admin_final_0719"
     image_tar_path: Optional[Path] = None
-    container_name: str = "forum"
-    host_port: int = 9999
+    container_name: str = "shopping_admin"
+    host_port: int = 7780
     container_port: int = 80
-    readiness_path: str = "/"
+    readiness_path: str = "/admin"
     readiness_timeout_seconds: int = 600
     readiness_poll_interval_seconds: float = 2.0
 
     @property
     def base_url(self) -> str:
-        return f"http://35.247.158.69:{self.host_port}"
+        return f"http://34.143.185.85:{self.host_port}"
 
 
 class PlaywrightStateManager(BaseStateManager):
@@ -54,12 +56,12 @@ class PlaywrightStateManager(BaseStateManager):
     def __init__(
         self,
         *,
-        docker_image_name: str = "postmill-populated-exposed-withimg",
-        docker_container_name: str = "forum",
-        host_port: int = 9999,
+        docker_image_name: str = "shopping_admin_final_0719",
+        docker_container_name: str = "shopping_admin",
+        host_port: int = 7780,
         container_port: int = 80,
         image_tar_path: Optional[str | Path] = None,
-        readiness_path: str = "/",
+        readiness_path: str = "/admin",
         readiness_timeout_seconds: int = 600,
         readiness_poll_interval_seconds: float = 2.0,
         # Playwright browser config params (ignored by this state manager)
@@ -156,14 +158,26 @@ class PlaywrightStateManager(BaseStateManager):
         except Exception:
             return False
 
+    def _get_entry_url(self) -> str:
+        base = self.config.base_url.rstrip("/")
+        path = self.config.readiness_path
+        if not path or path == "/":
+            return base
+        return f"{base}{path}"
+
     def _wait_until_ready(self) -> bool:
         deadline = time.time() + self.config.readiness_timeout_seconds
         base_url = self.config.base_url.rstrip("/")
-        url = f"{base_url}{self.config.readiness_path}"
+        url = self._get_entry_url()
+
+        # Determine host and port from URL for port checks
+        parsed = urlparse(base_url)
+        host = parsed.hostname or "34.143.185.85"
+        port = parsed.port or self.config.host_port
 
         # First wait for port to open to avoid long HTTP errors
         while time.time() < deadline:
-            if self._port_open("35.247.158.69", self.config.host_port):
+            if self._port_open(host, port):
                 break
             time.sleep(self.config.readiness_poll_interval_seconds)
 
@@ -175,6 +189,82 @@ class PlaywrightStateManager(BaseStateManager):
 
         logger.error("Timed out waiting for WebArena at %s", url)
         return False
+
+    def _configure_shopping_admin_post_start(self) -> None:
+        """Run Magento-specific steps for shopping_admin container.
+        Uses EXTERNAL_IP env var if provided; waits a bit for services to start.
+        """
+        external_ip = os.getenv("EXTERNAL_IP", "34.143.185.85")
+        try:
+            wait_seconds = int(os.getenv("SHOPPING_ADMIN_SETUP_WAIT", "120"))
+        except ValueError:
+            wait_seconds = 60
+
+        logger.info(
+            "Running shopping_admin post-start setup using external IP %s (wait %s s)",
+            external_ip,
+            wait_seconds,
+        )
+
+        if wait_seconds > 0:
+            time.sleep(wait_seconds)
+
+        base_url = f"http://{external_ip}:{self.config.host_port}"
+
+        cmds = [
+            [
+                "docker",
+                "exec",
+                self.config.container_name,
+                "/var/www/magento2/bin/magento",
+                "setup:store-config:set",
+                f"--base-url={base_url}",
+            ],
+            [
+                "docker",
+                "exec",
+                self.config.container_name,
+                "mysql",
+                "-u",
+                "magentouser",
+                "-pMyPassword",
+                "magentodb",
+                "-e",
+                f"UPDATE core_config_data SET value='{base_url}/' WHERE path IN ('web/secure/base_url', 'web/unsecure/base_url');",
+            ],
+            [
+                "docker",
+                "exec",
+                self.config.container_name,
+                "/var/www/magento2/bin/magento",
+                "config:set",
+                "admin/security/password_is_forced",
+                "0",
+            ],
+            [
+                "docker",
+                "exec",
+                self.config.container_name,
+                "/var/www/magento2/bin/magento",
+                "config:set",
+                "admin/security/password_lifetime",
+                "0",
+            ],
+            [
+                "docker",
+                "exec",
+                self.config.container_name,
+                "/var/www/magento2/bin/magento",
+                "cache:flush",
+            ],
+        ]
+
+        for cmd in cmds:
+            result = self._run_cmd(cmd)
+            if result.returncode != 0:
+                logger.warning("shopping_admin setup step failed (%s): %s", " ".join(cmd), result.stderr.strip())
+            else:
+                logger.debug("shopping_admin setup step ok (%s): %s", " ".join(cmd), result.stdout.strip())
 
     # ---- BaseStateManager hooks -----------------------------------------
 
@@ -197,6 +287,7 @@ class PlaywrightStateManager(BaseStateManager):
                 "-d",
                 self.config.image_name,
             ]
+            print("docker run command: ", run_cmd)
             result = self._run_cmd(run_cmd)
             if result.returncode != 0:
                 logger.error("Failed to start container: %s", result.stderr.strip())
@@ -204,11 +295,17 @@ class PlaywrightStateManager(BaseStateManager):
             container_id = result.stdout.strip()
             logger.info("Started container %s (%s)", self.config.container_name, container_id)
 
+            # Special handling for shopping_admin
+            if self.config.container_name == "shopping_admin":
+                self._configure_shopping_admin_post_start()
+
             # Wait for readiness
             if not self._wait_until_ready():
                 # Cleanup on failure
                 self._stop_and_remove_container(self.config.container_name)
                 return None
+
+            entry_url = self._get_entry_url()
 
             # Track resource for cleanup
             self.track_resource(
@@ -218,20 +315,20 @@ class PlaywrightStateManager(BaseStateManager):
                     "image": self.config.image_name,
                     "host_port": self.config.host_port,
                     "container_port": self.config.container_port,
-                    "base_url": self.config.base_url,
+                    "base_url": entry_url,
                 },
             )
 
             # Provide initial state info
             return InitialStateInfo(
                 state_id=self.config.container_name,
-                state_url=self.config.base_url,
+                state_url=entry_url,
                 metadata={
                     "docker_image": self.config.image_name,
                     "container_name": self.config.container_name,
                     "host_port": self.config.host_port,
                     "container_port": self.config.container_port,
-                    "base_url": self.config.base_url,
+                    "base_url": entry_url,
                     "category": task.category,
                 },
             )
@@ -248,7 +345,7 @@ class PlaywrightStateManager(BaseStateManager):
     def _cleanup_task_initial_state(self, task: BaseTask) -> bool:
         if self.skip_cleanup:
             logger.info("Skipping container cleanup (skip_cleanup=True)")
-            logger.info("Container is still running at: %s", self.config.base_url)
+            logger.info("Container is still running at: %s", self._get_entry_url())
             logger.info("To manually stop: docker stop %s && docker rm %s", 
                        self.config.container_name, self.config.container_name)
             return True
@@ -282,7 +379,7 @@ class PlaywrightStateManager(BaseStateManager):
         """
         return {
             "environment": "webarena-docker",
-            "base_url": self.config.base_url,
+            "base_url": self._get_entry_url(),
             "docker": {
                 "image": self.config.image_name,
                 "container": self.config.container_name,
