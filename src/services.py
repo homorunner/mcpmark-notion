@@ -309,7 +309,7 @@ SERVICES = {
             },
             "base_url": {
                 "env_var": "PLAYWRIGHT_WEBARENA_BASE_URL",
-                "default": "http://35.247.158.69:9999",
+                "default": "http://34.143.185.85:7780/admin",
                 "required": False,
                 "description": "Base URL for WebArena environment"
             },
@@ -319,6 +319,38 @@ SERVICES = {
                 "required": False,
                 "description": "Skip Docker container cleanup for debugging",
                 "transform": "bool"
+            },
+            "host_port": {
+                "env_var": "PLAYWRIGHT_WEBARENA_HOST_PORT",
+                "default": 7780,
+                "required": False,
+                "description": "Host port for Docker container mapping",
+                "transform": "int"
+            },
+            "container_port": {
+                "env_var": "PLAYWRIGHT_WEBARENA_CONTAINER_PORT",
+                "default": 80,
+                "required": False,
+                "description": "Container port exposed by Docker image",
+                "transform": "int"
+            },
+            "container_name": {
+                "env_var": "PLAYWRIGHT_WEBARENA_CONTAINER_NAME",
+                "default": "shopping_admin",
+                "required": False,
+                "description": "Docker container name to run"
+            },
+            "image_name": {
+                "env_var": "PLAYWRIGHT_WEBARENA_IMAGE_NAME",
+                "default": "shopping_admin_final_0719",
+                "required": False,
+                "description": "Docker image name (with optional tag)"
+            },
+            "readiness_path": {
+                "env_var": "PLAYWRIGHT_WEBARENA_READINESS_PATH",
+                "default": "/admin",
+                "required": False,
+                "description": "HTTP path used for readiness checks and initial navigation"
             }
         },
         "components": {
@@ -335,6 +367,11 @@ SERVICES = {
                 "viewport_width": "viewport_width",
                 "viewport_height": "viewport_height",
                 "skip_cleanup": "skip_cleanup",
+                "host_port": "host_port",
+                "container_port": "container_port",
+                "docker_container_name": "container_name",
+                "docker_image_name": "image_name",
+                "readiness_path": "readiness_path",
             },
             "login_helper": {
                 "browser": "browser",
