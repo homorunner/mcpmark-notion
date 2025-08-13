@@ -101,7 +101,9 @@ def validate_and_gather_metrics(
 
         # Check pipeline errors
         error_msg = meta.get("execution_result", {}).get("error_message")
-        if error_msg and any(err in error_msg for err in src.evaluator.PIPELINE_RETRY_ERRORS):
+        if error_msg and any(
+            err in error_msg for err in src.evaluator.PIPELINE_RETRY_ERRORS
+        ):
             has_retry_error = True
 
         # Collect metrics
@@ -138,11 +140,15 @@ def validate_and_gather_metrics(
     return True, metrics, None
 
 
-def plot_metrics(metrics: Dict[str, Dict[str, float]], exp_name: str, service: str, show: bool):
+def plot_metrics(
+    metrics: Dict[str, Dict[str, float]], exp_name: str, service: str, show: bool
+):
     """Create a bar chart visualizing success rate and avg tokens; annotate avg turns."""
 
     # Sort by success-rate (desc)
-    sorted_items = sorted(metrics.items(), key=lambda x: x[1]["success_rate"], reverse=True)
+    sorted_items = sorted(
+        metrics.items(), key=lambda x: x[1]["success_rate"], reverse=True
+    )
     models = [m for m, _ in sorted_items]
     success_rates = [item[1]["success_rate"] for item in sorted_items]
     avg_tokens = [item[1]["avg_tokens"] for item in sorted_items]
@@ -239,7 +245,7 @@ def main():
         help="Name of the experiment folder inside ./results, e.g. MCP-RUN-FINAL",
     )
     parser.add_argument(
-        "--service",
+        "--mcp",
         required=True,
         help="Service prefix to filter model folders, e.g. notion",
     )
@@ -264,13 +270,15 @@ def main():
     model_dirs = [
         d
         for d in os.listdir(exp_path)
-        if os.path.isdir(os.path.join(exp_path, d)) and d.startswith(args.service)
+        if os.path.isdir(os.path.join(exp_path, d)) and d.startswith(args.mcp)
     ]
 
     # Discover expected tasks for this service
-    expected_tasks = discover_all_tasks(args.service)
+    expected_tasks = discover_all_tasks(args.mcp)
     if not expected_tasks:
-        print(f"[ERROR] Could not discover any tasks for service '{args.service}'. Exiting.")
+        print(
+            f"[ERROR] Could not discover any tasks for service '{args.mcp}'. Exiting."
+        )
         return
 
     metrics: Dict[str, Dict[str, float]] = {}
@@ -279,7 +287,7 @@ def main():
         model_name = (
             model_dir.split("_", 1)[1]
             if "_" in model_dir
-            else model_dir[len(args.service) :]
+            else model_dir[len(args.mcp) :]
         )
         model_path = os.path.join(exp_path, model_dir)
 
@@ -292,7 +300,7 @@ def main():
             info(f"{model_name}: {model_metrics}")
         else:
             cmd = (
-                f"python pipeline.py --service {args.service} --tasks all "
+                f"python pipeline.py --mcp {args.mcp} --tasks all "
                 f"--models {model_name} --exp-name {args.exp_name}"
             )
             retry_errs = ", ".join(src.evaluator.PIPELINE_RETRY_ERRORS)
@@ -307,7 +315,7 @@ def main():
         print("[ERROR] No metrics collected; aborting plot.")
         return
 
-    plot_metrics(metrics, args.exp_name, args.service, show=args.show)
+    plot_metrics(metrics, args.exp_name, args.mcp, show=args.show)
 
 
 if __name__ == "__main__":
