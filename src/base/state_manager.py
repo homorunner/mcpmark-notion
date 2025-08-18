@@ -92,7 +92,7 @@ class BaseStateManager(ABC):
                 logger.info(f"| ✓ Cleanup completed for {self.service_name}")
             else:
                 logger.warning(
-                    f"⚠️ Cleanup completed with some failures for {self.service_name}"
+                    f"| Cleanup completed with some failures for {self.service_name}"
                 )
 
             return cleanup_success
