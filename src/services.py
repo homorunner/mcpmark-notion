@@ -221,12 +221,14 @@ SERVICES = {
             },
             "database": {
                 "env_var": "POSTGRES_DATABASE",
-                "required": True,
+                "default": "postgres",
+                "required": False,
                 "description": "PostgreSQL database name",
             },
             "username": {
                 "env_var": "POSTGRES_USERNAME",
-                "required": True,
+                "default": "postgres",
+                "required": False,
                 "description": "PostgreSQL username",
             },
             "password": {

@@ -28,8 +28,8 @@ class PostgresStateManager(BaseStateManager):
         self,
         host: str = "localhost",
         port: int = 5432,
-        database: str = None,
-        username: str = None,
+        database: str = "postgres",
+        username: str = "postgres",
         password: str = None,
     ):
         """Initialize PostgreSQL state manager.
@@ -229,13 +229,13 @@ class PostgresStateManager(BaseStateManager):
         # Find the task directory containing prepare_environment.py
         task_dir = task.task_instruction_path.parent
         prepare_script = task_dir / "prepare_environment.py"
-        
+
         if not prepare_script.exists():
             logger.debug(f"No prepare_environment.py found for task {task.name}")
             return
-        
+
         logger.info(f"Running prepare_environment.py for task {task.name}")
-        
+
         # Set up environment variables for the script
         env = os.environ.copy()
         env.update({
@@ -245,7 +245,7 @@ class PostgresStateManager(BaseStateManager):
             "POSTGRES_USERNAME": self.username,
             "POSTGRES_PASSWORD": self.password or "",
         })
-        
+
         try:
             # Run the prepare_environment.py script
             result = subprocess.run(
@@ -256,7 +256,7 @@ class PostgresStateManager(BaseStateManager):
                 text=True,
                 timeout=300,  # 5 minute timeout
             )
-            
+
             if result.returncode == 0:
                 logger.info(f"✅ Environment preparation completed for {task.name}")
                 if result.stdout.strip():
@@ -265,7 +265,7 @@ class PostgresStateManager(BaseStateManager):
                 logger.error(f"❌ Environment preparation failed for {task.name}")
                 logger.error(f"Error output: {result.stderr}")
                 raise RuntimeError(f"prepare_environment.py failed with exit code {result.returncode}")
-                
+
         except subprocess.TimeoutExpired:
             logger.error(f"❌ Environment preparation timed out for {task.name}")
             raise RuntimeError("prepare_environment.py execution timed out")
