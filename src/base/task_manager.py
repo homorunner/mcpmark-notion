@@ -321,6 +321,7 @@ class BaseTaskManager(ABC):
             category_dir.is_dir()
             and not category_dir.name.startswith(".")
             and category_dir.name != "utils"
+            and category_dir.name != "__pycache__"
         )
 
     def _find_task_files(self, category_dir: Path) -> List[Dict[str, Any]]:
