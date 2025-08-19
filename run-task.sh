@@ -97,7 +97,7 @@ if [ "$SERVICE" = "postgres" ]; then
         docker run -d \
             --name "$POSTGRES_CONTAINER" \
             --network "$NETWORK_NAME" \
-            -e POSTGRES_DB=postgres \
+            -e POSTGRES_DATABASE=postgres \
             -e POSTGRES_USER=postgres \
             -e POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-123456}" \
             postgres:17

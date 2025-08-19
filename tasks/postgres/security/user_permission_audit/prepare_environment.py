@@ -10,25 +10,25 @@ def setup_security_environment():
     Set up a security-focused PostgreSQL environment with business tables and users with various permissions.
     Creates a scenario where some users have dangling or insufficient permissions for realistic security analysis.
     """
-    
+
     # Database connection parameters from environment
     db_params = {
         'host': os.getenv('POSTGRES_HOST', 'localhost'),
         'port': os.getenv('POSTGRES_PORT', '5432'),
         'user': os.getenv('POSTGRES_USER', 'postgres'),
         'password': os.getenv('POSTGRES_PASSWORD', 'password'),
-        'database': os.getenv('POSTGRES_DB', 'postgres')
+        'database': os.getenv('POSTGRES_DATABASE', 'postgres')
     }
-    
+
     try:
         conn = psycopg2.connect(**db_params)
         conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
         cur = conn.cursor()
-        
+
         print("Setting up security audit environment...")
-        
+
         # Create business tables with realistic structure
-        
+
         # 1. User Profiles Table
         cur.execute("""
             DROP TABLE IF EXISTS user_profiles CASCADE;
@@ -50,7 +50,7 @@ def setup_security_environment():
                 bio TEXT
             );
         """)
-        
+
         # 2. User Credentials Table (sensitive data)
         cur.execute("""
             DROP TABLE IF EXISTS user_credentials CASCADE;
@@ -70,7 +70,7 @@ def setup_security_environment():
                 security_questions JSONB
             );
         """)
-        
+
         # 3. User Activity Analysis Table (analytics data)
         cur.execute("""
             DROP TABLE IF EXISTS user_stat_analysis CASCADE;
@@ -90,7 +90,7 @@ def setup_security_environment():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
-        
+
         # 4. Product Catalog Table
         cur.execute("""
             DROP TABLE IF EXISTS product_catalog CASCADE;
@@ -111,7 +111,7 @@ def setup_security_environment():
                 dimensions JSONB
             );
         """)
-        
+
         # 5. Order Management Table
         cur.execute("""
             DROP TABLE IF EXISTS order_management CASCADE;
@@ -134,7 +134,7 @@ def setup_security_environment():
                 tracking_number VARCHAR(100)
             );
         """)
-        
+
         # 6. Financial Transactions Table (sensitive financial data)
         cur.execute("""
             DROP TABLE IF EXISTS financial_transactions CASCADE;
@@ -157,7 +157,7 @@ def setup_security_environment():
                 notes TEXT
             );
         """)
-        
+
         # 7. Audit Logs Table (system audit trail)
         cur.execute("""
             DROP TABLE IF EXISTS audit_logs CASCADE;
@@ -177,128 +177,128 @@ def setup_security_environment():
                 error_message TEXT
             );
         """)
-        
+
         print("Created 7 business tables")
-        
+
         # Drop existing users if they exist (ignore errors)
         users_to_drop = [
             'analytics_user', 'marketing_user', 'customer_service', 'finance_user',
             'product_manager', 'security_auditor', 'developer_user', 'backup_user',
             'temp_contractor', 'old_employee', 'test_account'
         ]
-        
+
         for user in users_to_drop:
             try:
                 cur.execute(f"DROP USER IF EXISTS {user};")
             except:
                 pass
-        
+
         # Create PostgreSQL users with different roles
-        
+
         # 1. Analytics User - should have read access to analytics data
         cur.execute("CREATE USER analytics_user WITH PASSWORD 'analytics123';")
-        
+
         # 2. Marketing User - should have read access to user profiles and analytics
         cur.execute("CREATE USER marketing_user WITH PASSWORD 'marketing456';")
-        
+
         # 3. Customer Service User - should have read/write access to profiles and orders
         cur.execute("CREATE USER customer_service WITH PASSWORD 'service789';")
-        
+
         # 4. Finance User - should have access to financial data
         cur.execute("CREATE USER finance_user WITH PASSWORD 'finance321';")
-        
+
         # 5. Product Manager - should have access to product catalog
         cur.execute("CREATE USER product_manager WITH PASSWORD 'product654';")
-        
+
         # 6. Security Auditor - should have read access to audit logs
         cur.execute("CREATE USER security_auditor WITH PASSWORD 'audit987';")
-        
+
         # 7. Developer User - should have limited development access
         cur.execute("CREATE USER developer_user WITH PASSWORD 'dev123456';")
-        
+
         # 8. Backup User - should have read access for backup purposes
         cur.execute("CREATE USER backup_user WITH PASSWORD 'backup789';")
-        
+
         # 9-11. Dangling users with no proper permissions
         cur.execute("CREATE USER temp_contractor WITH PASSWORD 'temp123';")
         cur.execute("CREATE USER old_employee WITH PASSWORD 'old456';")
         cur.execute("CREATE USER test_account WITH PASSWORD 'test789';")
-        
+
         print("Created 11 users (8 functional, 3 dangling)")
-        
+
         # Grant appropriate permissions to each user
-        
+
         # Analytics User - Read access to analytics and user profiles
         cur.execute("GRANT SELECT ON user_stat_analysis TO analytics_user;")
         cur.execute("GRANT SELECT ON user_profiles TO analytics_user;")
-        
+
         # Marketing User - Read access to profiles and analytics
         cur.execute("GRANT SELECT ON user_profiles TO marketing_user;")
         cur.execute("GRANT SELECT ON user_stat_analysis TO marketing_user;")
         cur.execute("GRANT SELECT ON product_catalog TO marketing_user;")
-        
+
         # Customer Service - Read/Write access to profiles and orders
         cur.execute("GRANT SELECT, UPDATE ON user_profiles TO customer_service;")
         cur.execute("GRANT SELECT, INSERT, UPDATE ON order_management TO customer_service;")
         cur.execute("GRANT SELECT ON product_catalog TO customer_service;")
-        
+
         # Finance User - Access to financial data and orders
         cur.execute("GRANT SELECT ON financial_transactions TO finance_user;")
         cur.execute("GRANT SELECT ON order_management TO finance_user;")
         cur.execute("GRANT SELECT ON user_profiles TO finance_user;")
-        
+
         # Product Manager - Full access to product catalog
         cur.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON product_catalog TO product_manager;")
         cur.execute("GRANT SELECT ON order_management TO product_manager;")
-        
+
         # Security Auditor - Read access to audit logs and user credentials
         cur.execute("GRANT SELECT ON audit_logs TO security_auditor;")
         cur.execute("GRANT SELECT ON user_credentials TO security_auditor;")
         cur.execute("GRANT SELECT ON user_profiles TO security_auditor;")
-        
+
         # Developer - Limited access for development
         cur.execute("GRANT SELECT ON user_profiles TO developer_user;")
         cur.execute("GRANT SELECT ON product_catalog TO developer_user;")
-        
+
         # Backup User - Read access to most tables for backup
         cur.execute("GRANT SELECT ON user_profiles TO backup_user;")
         cur.execute("GRANT SELECT ON product_catalog TO backup_user;")
         cur.execute("GRANT SELECT ON order_management TO backup_user;")
         cur.execute("GRANT SELECT ON audit_logs TO backup_user;")
-        
+
         print("Granted initial permissions")
-        
+
         # Now introduce security gaps by removing some permissions
-        
+
         # Remove analytics_user's access to user_profiles (creating incomplete access)
         cur.execute("REVOKE SELECT ON user_profiles FROM analytics_user;")
-        
+
         # Remove marketing_user's access to product_catalog (missing needed access)
         cur.execute("REVOKE SELECT ON product_catalog FROM marketing_user;")
-        
+
         # Remove finance_user's access to user_profiles (incomplete financial analysis capability)
         cur.execute("REVOKE SELECT ON user_profiles FROM finance_user;")
-        
+
         # Remove developer_user's access to product_catalog (limited development capability)
         cur.execute("REVOKE SELECT ON product_catalog FROM developer_user;")
-        
+
         # Remove backup_user's access to order_management (incomplete backup coverage)
         cur.execute("REVOKE SELECT ON order_management FROM backup_user;")
-        
+
         # Grant sequence permissions where needed
         cur.execute("GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO customer_service;")
         cur.execute("GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO product_manager;")
-        
+
         print("Introduced 5 security gaps by revoking permissions")
         print("Environment setup complete!")
         print("\nSecurity issues to find:")
         print("- Users with incomplete permissions for their roles")
         print("- Dangling users with no table access")
         print("- Missing permissions that affect business operations")
-        
+
         cur.close()
         conn.close()
-        
+
     except Exception as e:
         print(f"Error setting up environment: {e}")
         sys.exit(1)

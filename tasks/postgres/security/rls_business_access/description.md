@@ -1,80 +1,74 @@
-Implement and debug Row Level Security (RLS) policies for a multi-tenant business application with complex organizational hierarchies.
+Implement Row Level Security (RLS) policies for a social media platform with Users, Posts, Comments, and Channels.
 
 ## Your Mission:
 
-You're tasked with implementing Row Level Security for a SaaS business platform that serves multiple organizations. The platform has a complex permission model where users can belong to multiple organizations with different roles, and access to data must be strictly controlled based on organizational membership and user roles.
-
-## Business Context:
-
-The platform manages:
-- **User Profiles**: Individual user accounts that can belong to multiple organizations
-- **User Credentials**: Sensitive authentication data (passwords, tokens, session data)
-- **Organization Profiles**: Company/team information with different subscription tiers
-- **Organization Membership**: User-organization relationships with roles (owner, admin, member, viewer)
-- **Projects**: Work items that belong to organizations with team assignments
-- **Project Assignments**: User assignments to specific projects with role-based access
+Build RLS policies for a social platform where users create posts and comments in channels. Implement proper access control so users can manage their own content, while channel moderators can moderate content in their channels.
 
 ## RLS Requirements:
 
-### 1. User Profile Access Rules:
-- Users can read/write their own profile data
-- Organization admins can read basic profile info (name, email) of their members
-- Organization owners can read full profile info of their members
-- When listing users, non-owners should only see basic fields (name, email, role)
+### 1. Users Table Access Rules:
+- **SELECT**: Users can read all public user profiles (username, created_at)
+- **UPDATE**: Users can only modify their own profile
+- **DELETE**: Users can only delete their own account
 
-### 2. Organization Access Rules:
-- Users can only see organizations they belong to
-- Only owners and admins can modify organization details
-- Billing information is only visible to owners
-- Member counts and basic info visible to all members
+### 2. Channels Table Access Rules:
+- **SELECT**: Everyone can read public channel information
+- **INSERT**: Any authenticated user can create a channel (becomes owner)
+- **UPDATE**: Only channel owners can modify channel details
+- **DELETE**: Only channel owners can delete channels
 
-### 3. Project Access Rules:
-- Users can only see projects from organizations they belong to
-- Project visibility depends on user's role in that organization:
-  - Owners/Admins: All projects in their organizations
-  - Members: Only projects they're assigned to
-  - Viewers: Only public projects in their organizations
+### 3. Posts Table Access Rules:
+- **SELECT**: Users can read all posts in channels they have access to
+- **INSERT**: Authenticated users can create posts in any channel
+- **UPDATE**: Post authors OR channel moderators OR channel owners can edit posts
+- **DELETE**: Post authors OR channel moderators OR channel owners can delete posts
 
-### 4. Sensitive Data Protection:
-- User credentials are only accessible by the user themselves
-- Organization billing data only accessible by owners
-- Project financial data only accessible by owners and admins
+### 4. Comments Table Access Rules:
+- **SELECT**: Users can read comments on posts they can access
+- **INSERT**: Authenticated users can comment on posts they can see
+- **UPDATE**: Comment authors OR post authors OR channel moderators OR channel owners can edit comments
+- **DELETE**: Comment authors OR post authors OR channel moderators OR channel owners can delete comments
 
-## Technical Challenges:
+### 5. Channel Moderators Table Access Rules:
+- **SELECT**: Users can see moderator lists for channels
+- **INSERT**: Only channel owners can add moderators
+- **DELETE**: Channel owners can remove moderators; moderators can remove themselves
 
-You'll need to:
+## Session Context:
 
-1. **Set up the schema** with proper foreign key relationships
-2. **Create RLS policies** that handle multi-table joins efficiently
-3. **Handle role hierarchy** where owners > admins > members > viewers
-4. **Optimize performance** as RLS can impact query performance
-5. **Debug permission issues** where users report they can't access data they should be able to see
+Use `current_setting('app.current_user_id')` to get the current user ID from session context.
+
+## Schema Requirements:
+
+- **Use only the `public` schema** for all tables, functions, and policies
+- All helper functions should be created in the `public` schema
+- Do not create additional schemas
 
 ## Expected Deliverables:
 
-Create RLS policies that properly restrict access while maintaining performance. Your implementation should:
-
-1. Enable RLS on all relevant tables
-2. Create policies for SELECT, INSERT, UPDATE, DELETE operations
-3. Handle the complex organizational hierarchy correctly
-4. Provide different levels of data visibility (full vs. partial field access)
-5. Create helper functions to check user permissions efficiently
+1. **Enable RLS** on all five tables
+2. **Create policies** for SELECT, INSERT, UPDATE, DELETE operations on each table
+3. **Helper functions** to check permissions efficiently:
+   - `is_channel_owner(channel_id, user_id)`
+   - `is_channel_moderator(channel_id, user_id)`
+   - `can_moderate_channel(channel_id, user_id)`
+4. **Proper indexing** to ensure RLS policies perform well
 
 ## Test Scenarios:
 
-Your RLS implementation will be tested with scenarios including:
-- Cross-organization data isolation
-- Role-based access within organizations  
-- Partial field visibility for listing operations
-- Performance with complex multi-table queries
-- Edge cases like users with multiple roles across organizations
+Your RLS implementation will be verified with:
+
+- **Content ownership**: Users can only edit their own posts/comments
+- **Moderation hierarchy**: Moderators can moderate content in their channels
+- **Channel isolation**: Users only see content from accessible channels
+- **Permission escalation**: Owners have full control over their channels
+- **Cross-table access**: Comment policies respect post and channel permissions
 
 ## Success Criteria:
 
-- Users can only access data from organizations they belong to
-- Role-based restrictions work correctly within organizations
-- Sensitive fields are properly protected
-- Performance remains acceptable for typical business queries
-- No data leakage between organizations or unauthorized users
-
-The verification system will test your RLS policies with multiple users, organizations, and permission scenarios to ensure complete data isolation and proper access control.
+- Users can manage their own content (posts, comments)
+- Channel owners have full control over their channels
+- Moderators can moderate content in their assigned channels
+- No unauthorized access to other users' private data
+- Policies are efficient and don't create performance bottlenecks
+- All operations (SELECT, INSERT, UPDATE, DELETE) are properly secured
