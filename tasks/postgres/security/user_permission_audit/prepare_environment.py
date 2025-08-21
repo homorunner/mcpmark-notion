@@ -37,6 +37,7 @@ def setup_security_environment():
                 db_name = db_row[0]
                 try:
                     cur_postgres.execute("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = %s;", (db_name,))
+                    # TODO: Not sure why we have to drop database in order to drop the following users
                     cur_postgres.execute(f"DROP DATABASE IF EXISTS {db_name};")
                     print(f"Dropped database: {db_name}")
                 except Exception as e:
