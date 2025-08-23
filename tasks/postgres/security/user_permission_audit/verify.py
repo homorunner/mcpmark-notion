@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import os
 import psycopg2
 import sys
@@ -24,148 +22,177 @@ def verify_security_audit():
 
         print("Verifying security audit findings...")
 
-        # Check if security_audit_findings table exists
+        # Check if security_audit_results table exists
         cur.execute("""
             SELECT EXISTS (
                 SELECT FROM information_schema.tables
-                WHERE table_name = 'security_audit_findings'
+                WHERE table_name = 'security_audit_results'
             );
         """)
 
         if not cur.fetchone()[0]:
-            print("❌ FAIL: security_audit_findings table not found")
+            print("FAIL: security_audit_results table not found")
             return False
 
-        # Get all findings
-        cur.execute("SELECT * FROM security_audit_findings ORDER BY finding_id;")
+        # Check if security_audit_details table exists
+        cur.execute("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables
+                WHERE table_name = 'security_audit_details'
+            );
+        """)
+
+        if not cur.fetchone()[0]:
+            print("FAIL: security_audit_details table not found")
+            return False
+
+        # Get all detailed findings
+        cur.execute("SELECT * FROM security_audit_details ORDER BY detail_id;")
         findings = cur.fetchall()
 
         if not findings:
-            print("❌ FAIL: No findings in security_audit_findings table")
+            print("FAIL: No findings in security_audit_details table")
             return False
 
         print(f"Found {len(findings)} audit findings")
 
-        # Expected issues based on the setup:
-        expected_issues = {
-            # Dangling users (should have 0 permissions)
+        # Expected findings based on the ground truth:
+        expected_findings = {
+            # Expected dangling users
             'dangling_users': {'temp_contractor', 'old_employee', 'test_account'},
 
-            # Users missing critical permissions for their roles
-            'permission_gaps': {
-                ('analytics_user', 'user_profiles', 'SELECT'),  # Revoked access
-                ('marketing_user', 'product_catalog', 'SELECT'),  # Revoked access
-                ('finance_user', 'user_profiles', 'SELECT'),  # Revoked access
-                ('developer_user', 'product_catalog', 'SELECT'),  # Revoked access
-                ('backup_user', 'order_management', 'SELECT'),  # Revoked access
+            # Expected missing permissions (should be granted)
+            'missing_permissions': {
+                ('analytics_user', 'user_profiles', 'SELECT'),
+                ('analytics_user', 'product_catalog', 'SELECT'),
+                ('analytics_user', 'order_management', 'SELECT'),
+                ('marketing_user', 'product_catalog', 'SELECT'),
+                ('customer_service', 'product_catalog', 'SELECT'),
+                ('finance_user', 'user_profiles', 'SELECT'),
+                ('product_manager', 'user_stat_analysis', 'SELECT'),
+                ('security_auditor', 'audit_logs', 'SELECT'),
+                ('developer_user', 'product_catalog', 'SELECT'),
+                ('backup_user', 'order_management', 'SELECT'),
+                ('backup_user', 'financial_transactions', 'SELECT'),
+                ('backup_user', 'user_stat_analysis', 'SELECT'),
+                ('backup_user', 'user_credentials', 'SELECT')
+            },
+
+            # Expected excessive permissions (should be revoked)
+            'excessive_permissions': {
+                ('analytics_user', 'financial_transactions', 'SELECT'),
+                ('marketing_user', 'financial_transactions', 'SELECT'),
+                ('customer_service', 'user_credentials', 'SELECT'),
+                ('product_manager', 'financial_transactions', 'SELECT'),
+                ('security_auditor', 'financial_transactions', 'UPDATE'),
+                ('developer_user', 'user_credentials', 'SELECT'),
+                ('developer_user', 'order_management', 'UPDATE'),
+                ('backup_user', 'product_catalog', 'DELETE'),
+                ('temp_contractor', 'product_catalog', 'SELECT'),
+                ('temp_contractor', 'user_profiles', 'SELECT'),
+                ('old_employee', 'audit_logs', 'SELECT'),
+                ('old_employee', 'user_stat_analysis', 'UPDATE'),
+                ('test_account', 'user_profiles', 'SELECT')
             }
         }
 
         found_dangling = set()
-        found_permission_gaps = set()
+        found_missing_permissions = set()
+        found_excessive_permissions = set()
 
-        # Analyze findings
+        # Analyze findings (detail_id, username, issue_type, table_name, permission_type, expected_access)
         for finding in findings:
-            finding_type = finding[1]
-            username = finding[2]
+            username = finding[1]
+            issue_type = finding[2]
             table_name = finding[3]
-            missing_permission = finding[4]
+            permission_type = finding[4]
+            expected_access = finding[5]
 
-            if finding_type == 'DANGLING_USER':
+            if issue_type == 'DANGLING_USER':
                 found_dangling.add(username)
-            elif finding_type in ['MISSING_PERMISSION', 'ROLE_MISMATCH']:
-                if table_name and missing_permission:
-                    found_permission_gaps.add((username, table_name, missing_permission))
+            elif issue_type == 'MISSING_PERMISSION' and expected_access:
+                if table_name and permission_type:
+                    found_missing_permissions.add((username, table_name, permission_type))
+            elif issue_type == 'EXCESSIVE_PERMISSION' and not expected_access:
+                if table_name and permission_type:
+                    found_excessive_permissions.add((username, table_name, permission_type))
 
         # Verify dangling users
-        missing_dangling = expected_issues['dangling_users'] - found_dangling
-        extra_dangling = found_dangling - expected_issues['dangling_users']
+        missing_dangling = expected_findings['dangling_users'] - found_dangling
+        extra_dangling = found_dangling - expected_findings['dangling_users']
 
-        print(f"\n=== Dangling Users ===")
-        print(f"Expected: {expected_issues['dangling_users']}")
+        print(f"Expected: {expected_findings['dangling_users']}")
         print(f"Found: {found_dangling}")
 
+        # Verify missing permissions
+        missing_missing_perms = expected_findings['missing_permissions'] - found_missing_permissions
+        extra_missing_perms = found_missing_permissions - expected_findings['missing_permissions']
+
+        print(f"Expected: {len(expected_findings['missing_permissions'])}")
+        print(f"Found: {len(found_missing_permissions)}")
+
+        # Verify excessive permissions
+        missing_excessive_perms = expected_findings['excessive_permissions'] - found_excessive_permissions
+        extra_excessive_perms = found_excessive_permissions - expected_findings['excessive_permissions']
+
+        print(f"Expected: {len(expected_findings['excessive_permissions'])}")
+        print(f"Found: {len(found_excessive_permissions)}")
+
+        # Check for missing findings
+        all_correct = True
+
         if missing_dangling:
-            print(f"❌ Missing dangling users: {missing_dangling}")
-        if extra_dangling:
-            print(f"ℹ️  Extra dangling users found: {extra_dangling}")
+            print(f"Missing dangling users: {missing_dangling}")
+            all_correct = False
 
-        # Verify permission gaps
-        missing_gaps = expected_issues['permission_gaps'] - found_permission_gaps
+        if missing_missing_perms:
+            print(f"Missing 'missing permission' findings:")
+            for perm in sorted(missing_missing_perms):
+                print(f"   - {perm[0]} should be granted {perm[2]} on {perm[1]}")
+            all_correct = False
 
-        print(f"\n=== Permission Gaps ===")
-        print(f"Expected gaps: {len(expected_issues['permission_gaps'])}")
-        print(f"Found gaps: {len(found_permission_gaps)}")
+        if missing_excessive_perms:
+            print(f"Missing 'excessive permission' findings:")
+            for perm in sorted(missing_excessive_perms):
+                print(f"   - {perm[0]} should have {perm[2]} revoked on {perm[1]}")
+            all_correct = False
 
-        if missing_gaps:
-            print(f"❌ Missing permission gaps:")
-            for gap in missing_gaps:
-                print(f"   - {gap[0]} missing {gap[2]} on {gap[1]}")
+        # Check audit summary table
+        cur.execute("SELECT audit_type, total_issues, users_affected, tables_affected FROM security_audit_results ORDER BY audit_type;")
+        summary_results = cur.fetchall()
 
-        # Additional validation: Check findings structure
+        for result in summary_results:
+            print(f"{result[0]}: {result[1]} issues, {result[2]} users affected, {result[3]} tables affected")
+
+        # Validate structure
         structure_valid = True
         for i, finding in enumerate(findings):
-            if len(finding) != 7:  # Should have 7 columns
-                print(f"❌ FAIL: Finding {i+1} has wrong number of columns")
+            if len(finding) != 6:  # Should have 6 columns
+                print(f"FAIL: Finding {i+1} has wrong number of columns (expected 6, got {len(finding)})")
                 structure_valid = False
                 continue
 
-            finding_type, username, table_name, missing_permission, justification, action, severity = finding[1:]
-
-            if not finding_type:
-                print(f"❌ FAIL: Finding {i+1} missing finding_type")
-                structure_valid = False
+            detail_id, username, issue_type, table_name, permission_type, expected_access = finding
 
             if not username:
-                print(f"❌ FAIL: Finding {i+1} missing username")
+                print(f"FAIL: Finding {i+1} missing username")
                 structure_valid = False
 
-            if not justification:
-                print(f"❌ FAIL: Finding {i+1} missing business_justification")
+            if issue_type not in ['DANGLING_USER', 'MISSING_PERMISSION', 'EXCESSIVE_PERMISSION']:
+                print(f"FAIL: Finding {i+1} invalid issue_type: {issue_type}")
                 structure_valid = False
 
-            if not action:
-                print(f"❌ FAIL: Finding {i+1} missing recommended_action")
+            if expected_access not in [True, False]:
+                print(f"FAIL: Finding {i+1} invalid expected_access: {expected_access}")
                 structure_valid = False
 
-            if severity not in ['HIGH', 'MEDIUM', 'LOW']:
-                print(f"❌ FAIL: Finding {i+1} invalid severity: {severity}")
-                structure_valid = False
-
-        # Calculate score
-        score = 0
-        max_score = 100
-
-        # Points for finding dangling users (30 points)
-        dangling_score = (len(found_dangling & expected_issues['dangling_users']) / len(expected_issues['dangling_users'])) * 30
-        score += dangling_score
-
-        # Points for finding permission gaps (50 points)
-        gap_score = (len(found_permission_gaps & expected_issues['permission_gaps']) / len(expected_issues['permission_gaps'])) * 50
-        score += gap_score
-
-        # Points for proper structure (20 points)
-        if structure_valid:
-            score += 20
-
-        print(f"\n=== Verification Results ===")
-        print(f"Dangling users score: {dangling_score:.1f}/30")
-        print(f"Permission gaps score: {gap_score:.1f}/50")
-        print(f"Structure score: {20 if structure_valid else 0}/20")
-        print(f"Total Score: {score:.1f}/100")
-
-        if score >= 80:
-            print("✅ PASS: Security audit successfully identified most critical issues")
+        if all_correct and structure_valid:
             return True
-        elif score >= 60:
-            print("⚠️  PARTIAL: Security audit identified some issues but missed important findings")
-            return False
         else:
-            print("❌ FAIL: Security audit failed to identify critical security issues")
             return False
 
     except Exception as e:
-        print(f"❌ FAIL: Error during verification: {e}")
+        print(f"FAIL: Error during verification: {e}")
         return False
     finally:
         if 'cur' in locals():
