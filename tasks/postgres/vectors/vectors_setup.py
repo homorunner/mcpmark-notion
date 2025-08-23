@@ -12,10 +12,9 @@ import psycopg2
 import json
 import random
 import numpy as np
-from typing import List, Dict, Any
+from typing import List
 
 logger = logging.getLogger(__name__)
-
 
 def get_connection_params():
     """Get database connection parameters from environment variables."""
@@ -48,14 +47,14 @@ def create_vector_extension():
         conn.autocommit = True
 
         with conn.cursor() as cur:
-            logger.info("🔧 Creating pgvector extension...")
+            logger.info("Creating pgvector extension...")
             cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
-            logger.info("✅ pgvector extension created successfully")
+            logger.info("pgvector extension created successfully")
 
         conn.close()
 
     except psycopg2.Error as e:
-        logger.error(f"❌ Failed to create pgvector extension: {e}")
+        logger.error(f"Failed to create pgvector extension: {e}")
         raise
 
 
@@ -68,7 +67,7 @@ def create_vector_tables():
         conn.autocommit = True
 
         with conn.cursor() as cur:
-            logger.info("🗃️ Creating vector database tables...")
+            logger.info("Creating vector database tables...")
 
             # Create documents table for document embeddings
             cur.execute("""
@@ -157,12 +156,12 @@ def create_vector_tables():
                 );
             """)
 
-            logger.info("✅ Vector database tables created successfully")
+            logger.info("Vector database tables created successfully")
 
         conn.close()
 
     except psycopg2.Error as e:
-        logger.error(f"❌ Failed to create vector tables: {e}")
+        logger.error(f"Failed to create vector tables: {e}")
         raise
 
 
@@ -175,7 +174,7 @@ def create_vector_indexes():
         conn.autocommit = True
 
         with conn.cursor() as cur:
-            logger.info("📊 Creating vector indexes...")
+            logger.info("Creating vector indexes...")
 
             # Vector indexes using HNSW (Hierarchical Navigable Small World)
             indexes = [
@@ -196,9 +195,9 @@ def create_vector_indexes():
                             CREATE INDEX IF NOT EXISTS {idx_name}
                             ON {table_name} USING ivfflat ({column_name} vector_cosine_ops) WITH (lists = 100);
                         """)
-                    logger.info(f"✅ Created index {idx_name} on {table_name}")
+                    logger.info(f"Created index {idx_name} on {table_name}")
                 except psycopg2.Error as e:
-                    logger.warning(f"⚠️ Could not create {method} index {idx_name}: {e}")
+                    logger.warning(f"Could not create {method} index {idx_name}: {e}")
                     # Try with IVFFlat as fallback
                     if method == "hnsw":
                         try:
@@ -206,9 +205,9 @@ def create_vector_indexes():
                                 CREATE INDEX IF NOT EXISTS {idx_name}_ivf
                                 ON {table_name} USING ivfflat ({column_name} vector_cosine_ops) WITH (lists = 100);
                             """)
-                            logger.info(f"✅ Created fallback IVFFlat index {idx_name}_ivf on {table_name}")
+                            logger.info(f"Created fallback IVFFlat index {idx_name}_ivf on {table_name}")
                         except psycopg2.Error as e2:
-                            logger.warning(f"⚠️ Could not create fallback index: {e2}")
+                            logger.warning(f"Could not create fallback index: {e2}")
 
             # Regular indexes for performance
             regular_indexes = [
@@ -226,16 +225,16 @@ def create_vector_indexes():
             for idx_name, table_name, column_name in regular_indexes:
                 try:
                     cur.execute(f"CREATE INDEX IF NOT EXISTS {idx_name} ON {table_name} ({column_name});")
-                    logger.debug(f"✅ Created regular index {idx_name}")
+                    logger.debug(f"Created regular index {idx_name}")
                 except psycopg2.Error as e:
-                    logger.warning(f"⚠️ Could not create regular index {idx_name}: {e}")
+                    logger.warning(f"Could not create regular index {idx_name}: {e}")
 
-            logger.info("✅ Vector indexes created successfully")
+            logger.info("Vector indexes created successfully")
 
         conn.close()
 
     except psycopg2.Error as e:
-        logger.error(f"❌ Failed to create vector indexes: {e}")
+        logger.error(f"Failed to create vector indexes: {e}")
         raise
 
 
@@ -248,7 +247,7 @@ def insert_sample_data():
         conn.autocommit = True
 
         with conn.cursor() as cur:
-            logger.info("📝 Inserting sample data...")
+            logger.info("Inserting sample data...")
 
             # Insert embedding models
             embedding_models = [
@@ -366,17 +365,17 @@ def insert_sample_data():
                     VALUES (%s, %s, %s, %s, %s, %s);
                 """, (query_hash, query_text, json.dumps(results), result_count, search_time, threshold))
 
-            logger.info(f"✅ Sample data inserted successfully:")
-            logger.info(f"   📄 {len(sample_documents)} documents")
-            logger.info(f"   📝 {chunk_count} document chunks")
-            logger.info(f"   🔍 {len(sample_queries)} user queries")
-            logger.info(f"   🏷️ {len(embedding_models)} embedding models")
-            logger.info(f"   📚 {len(knowledge_bases)} knowledge bases")
+            logger.info(f"Sample data inserted successfully:")
+            logger.info(f"   {len(sample_documents)} documents")
+            logger.info(f"   {chunk_count} document chunks")
+            logger.info(f"   {len(sample_queries)} user queries")
+            logger.info(f"   {len(embedding_models)} embedding models")
+            logger.info(f"   {len(knowledge_bases)} knowledge bases")
 
         conn.close()
 
     except psycopg2.Error as e:
-        logger.error(f"❌ Failed to insert sample data: {e}")
+        logger.error(f"Failed to insert sample data: {e}")
         raise
 
 
@@ -388,14 +387,14 @@ def verify_vector_setup():
         conn = psycopg2.connect(**conn_params)
 
         with conn.cursor() as cur:
-            logger.info("🔍 Verifying vector database setup...")
+            logger.info("Verifying vector database setup...")
 
             # Check extension
             cur.execute("SELECT extname FROM pg_extension WHERE extname = 'vector';")
             if cur.fetchone():
-                logger.info("✅ pgvector extension is installed")
+                logger.info("pgvector extension is installed")
             else:
-                logger.error("❌ pgvector extension not found")
+                logger.error("pgvector extension not found")
                 return False
 
             # Check tables and record counts
@@ -409,7 +408,7 @@ def verify_vector_setup():
                 cur.execute(f'SELECT COUNT(*) FROM {table}')
                 count = cur.fetchone()[0]
                 table_counts[table] = count
-                logger.info(f"✅ Table {table}: {count} records")
+                logger.info(f"Table {table}: {count} records")
 
             # Check vector columns
             cur.execute("""
@@ -421,7 +420,7 @@ def verify_vector_setup():
             """)
 
             vector_columns = cur.fetchall()
-            logger.info(f"✅ Found {len(vector_columns)} vector columns:")
+            logger.info(f"Found {len(vector_columns)} vector columns:")
             for table, column, dtype in vector_columns:
                 logger.info(f"   {table}.{column} ({dtype})")
 
@@ -434,7 +433,7 @@ def verify_vector_setup():
             """)
 
             vector_indexes = cur.fetchall()
-            logger.info(f"✅ Found {len(vector_indexes)} vector indexes:")
+            logger.info(f"Found {len(vector_indexes)} vector indexes:")
             for schema, table, index, definition in vector_indexes:
                 logger.info(f"   {index} on {table}")
 
@@ -448,20 +447,20 @@ def verify_vector_setup():
             """, (mock_embedding, mock_embedding))
 
             results = cur.fetchall()
-            logger.info(f"✅ Vector similarity query returned {len(results)} results")
+            logger.info(f"Vector similarity query returned {len(results)} results")
 
         conn.close()
-        logger.info("🎉 Vector database verification completed successfully")
+        logger.info("Vector database verification completed successfully")
         return table_counts, vector_columns, vector_indexes
 
     except psycopg2.Error as e:
-        logger.error(f"❌ Verification failed: {e}")
+        logger.error(f"Verification failed: {e}")
         raise
 
 
 def prepare_vector_environment():
     """Main function to prepare the vector database environment."""
-    logger.info("🔧 Preparing vector database environment...")
+    logger.info("Preparing vector database environment...")
 
     try:
         # Create pgvector extension
@@ -479,10 +478,10 @@ def prepare_vector_environment():
         # Verify the setup
         table_counts, vector_columns, vector_indexes = verify_vector_setup()
 
-        logger.info("🎉 Vector database environment prepared successfully!")
-        logger.info(f"📊 Total tables created: {len(table_counts)}")
-        logger.info(f"📊 Total vector columns: {len(vector_columns)}")
-        logger.info(f"📊 Total vector indexes: {len(vector_indexes)}")
+        logger.info("Vector database environment prepared successfully!")
+        logger.info(f"Total tables created: {len(table_counts)}")
+        logger.info(f"Total vector columns: {len(vector_columns)}")
+        logger.info(f"Total vector indexes: {len(vector_indexes)}")
 
         return {
             'table_counts': table_counts,
@@ -491,7 +490,7 @@ def prepare_vector_environment():
         }
 
     except Exception as e:
-        logger.error(f"❌ Failed to prepare vector environment: {e}")
+        logger.error(f"Failed to prepare vector environment: {e}")
         raise
 
 
