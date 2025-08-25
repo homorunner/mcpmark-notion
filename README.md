@@ -168,7 +168,7 @@ python -m src.aggregators.aggregate_results --exp-name exp
 ## Contributing
 
 Contributions are welcome:
-1. Add a new task under `tasks/<category>/<task_n>/` with `description.md` and `verify.py`.
+1. Add a new task under `tasks/<category>/<task_name>/` with `description.md` and `verify.py`.
 2. Ensure local checks pass and open a PR.
 3. See `docs/contributing/make-contribution.md` and `docs/contributing/add-new-mcp-service.md`.
 
@@ -176,7 +176,7 @@ Contributions are welcome:
 
 ## Citation
 
-If you use MCPMark in your research, please cite:
+If you find our works useful for your research, please consider citing:
 
 ```bibtex
 @misc{mcpmark_2025,
