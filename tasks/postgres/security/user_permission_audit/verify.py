@@ -184,10 +184,33 @@ def verify_security_audit():
             "SELECT audit_type, total_issues, users_affected, tables_affected FROM security_audit_results ORDER BY audit_type;")
         summary_results = cur.fetchall()
 
-        for result in summary_results:
-            print(f"| Summary result: [{result[0]}] {result[1]} issues, {result[2]} users affected, {result[3]} tables affected")
+        # Expected summary numbers based on ground truth
+        expected_summary = {
+            'DANGLING_USERS': (3, 3, 0),          # 3 issues, 3 users affected, 0 tables affected
+            'EXCESSIVE_PERMISSIONS': (13, 10, 7), # 13 issues, 10 users affected, 7 tables affected
+            'MISSING_PERMISSIONS': (13, 8, 7)     # 13 issues, 8 users affected, 7 tables affected
+        }
 
-        if all_correct and structure_valid:
+        summary_correct = True
+        for result in summary_results:
+            audit_type, total_issues, users_affected, tables_affected = result
+            print(f"| Summary result: [{audit_type}] {total_issues} issues, {users_affected} users affected, {tables_affected} tables affected")
+            
+            if audit_type in expected_summary:
+                expected = expected_summary[audit_type]
+                if (total_issues, users_affected, tables_affected) != expected:
+                    print(f"| FAIL: {audit_type} summary mismatch - Expected: {expected}, Got: ({total_issues}, {users_affected}, {tables_affected})")
+                    summary_correct = False
+                else:
+                    print(f"| ✓ {audit_type} summary matches expected values")
+
+        # Assert exact counts match expected
+        assert len(found_dangling) == 3, f"Expected 3 dangling users, found {len(found_dangling)}"
+        assert len(found_missing_permissions) == 13, f"Expected 13 missing permissions, found {len(found_missing_permissions)}"
+        assert len(found_excessive_permissions) == 13, f"Expected 13 excessive permissions, found {len(found_excessive_permissions)}"
+
+        if all_correct and structure_valid and summary_correct:
+            print("| ✓ All assertions passed")
             return True
         else:
             return False
