@@ -97,7 +97,7 @@ python -m pipeline --exp-name exp --mcp notion --tasks all --models o3
 python -m pipeline --exp-name exp --mcp notion --tasks online_resume --models o3
 
 # Run a specific task
-python -m pipeline --exp-name exp --mcp notion --tasks online_resume/task_1 --models o3
+python -m pipeline --exp-name exp --mcp notion --tasks online_resume/daily_itinerary_overview --models o3
 
 # Evaluate multiple models
 python -m pipeline --exp-name exp --mcp notion --tasks all --models o3,gpt-4.1,claude-4-sonnet
@@ -168,7 +168,7 @@ python -m src.aggregators.aggregate_results --exp-name exp
 ## Contributing
 
 Contributions are welcome:
-1. Add a new task under `tasks/<category>/<task_name>/` with `description.md` and `verify.py`.
+1. Add a new task under `tasks/<category_id>/<task_id>/` with `description.md` and `verify.py`.
 2. Ensure local checks pass and open a PR.
 3. See `docs/contributing/make-contribution.md` and `docs/contributing/add-new-mcp-service.md`.
 
