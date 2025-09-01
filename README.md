@@ -84,7 +84,7 @@ python -m pipeline \
   --tasks file_property/size_classification
 ```
 
-Results are saved to `./results/{exp_name}/{mcp}__{model}/{task}` (in this example `./results/test-run/filesystem__gpt-5/file_property__size_classification`).
+Results are saved to `./results/{exp_name}/{model}__{mcp}/run-*/...` (e.g., `./results/test-run/gpt-5__filesystem/run-1/...`).
 
 ---
 
@@ -152,7 +152,7 @@ You can also follow `docs/quickstart.md` for the shortest end-to-end path.
 
 ## Results and metrics
 
-- Results are written to `./results/` (JSON + CSV).
+- Results are organized under `./results/{exp_name}/{model}__{mcp}/run-*/` (JSON + CSV per task).
 - Generate a summary with:
 ```bash
 python -m src.aggregators.aggregate_results --exp-name exp
@@ -162,7 +162,9 @@ python -m src.aggregators.aggregate_results --exp-name exp
 ---
 
 ## Model and Tasks
-- See `docs/introduction.md` for models supported in MCPMark.
+- **Model support**: MCPMark calls models via LiteLLM — see the LiteLLM docs: [`LiteLLM Doc`](https://docs.litellm.ai/docs/). For Anthropic (Claude) extended thinking mode (enabled via `--reasoning-effort`), we use Anthropic’s native API.
+- See `docs/introduction.md` for details and configuration of supported models in MCPMark.
+- To add a new model, edit `src/model_config.py`. Before adding, check LiteLLM supported models/providers. See [`LiteLLM Doc`](https://docs.litellm.ai/docs/).
 - Task design principles in `docs/datasets/task.md`. Each task ships with an automated `verify.py` for objective, reproducible evaluation, see `docs/task.md` for details.
 
 ---

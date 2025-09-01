@@ -63,10 +63,10 @@ def main():
         "--timeout", type=int, default=3600, help="Timeout in seconds for agent execution"
     )
     parser.add_argument(
-        "--stream",
-        action="store_true",
-        default=False,
-        help="Use streaming execution (default: False, uses non-streaming)",
+        "--reasoning-effort",
+        default="default",
+        choices=["default", "minimal", "low", "medium", "high"],
+        help="Reasoning effort level for supported models (default: None)",
     )
 
     # Output configuration
@@ -113,12 +113,11 @@ def main():
             logger.info(f"Starting Run {run_idx}/{args.k}")
             logger.info(f"{'=' * 80}\n")
             
-            # For k-runs, create run-N subdirectory
+            # For k-runs, results/{exp}/{mcp}__{model}/run-N
             run_exp_name = f"run-{run_idx}"
             run_output_dir = args.output_dir / args.exp_name
         else:
-            # For single run (k=1), maintain backward compatibility
-            # Use run-1 subdirectory for consistency
+            # For single run, still use run-1 under service_model
             run_exp_name = "run-1"
             run_output_dir = args.output_dir / args.exp_name
 
@@ -138,7 +137,7 @@ def main():
                 timeout=args.timeout,
                 exp_name=run_exp_name,
                 output_dir=run_output_dir,
-                stream=args.stream,
+                reasoning_effort=args.reasoning_effort,
             )
 
             pipeline.run_evaluation(args.tasks)

@@ -54,6 +54,101 @@ def discover_service_model_dirs(base_dir: Path) -> List[Path]:
     return [d for d in base_dir.iterdir() if d.is_dir() and "__" in d.name]
 
 
+def discover_service_model_dirs_in_exp(exp_dir: Path) -> List[Path]:
+    """Discover service_model directories at experiment root (new layout)."""
+    return discover_service_model_dirs(exp_dir)
+
+
+def discover_run_names(exp_dir: Path) -> List[str]:
+    """Discover run names (run-*) under service_model directories (new layout)."""
+    sm_dirs = discover_service_model_dirs_in_exp(exp_dir)
+    run_names_set = set()
+    for sm in sm_dirs:
+        if not sm.is_dir():
+            continue
+        for d in sm.iterdir():
+            if d.is_dir() and d.name.startswith("run-"):
+                run_names_set.add(d.name)
+    return sorted(run_names_set)
+
+
+def detect_layout_and_runs(exp_dir: Path) -> tuple[str, List[str]]:
+    """Detect directory layout and available run names.
+
+    Returns (layout, run_names):
+      - layout: 'root_runs' | 'nested_runs' | 'single'
+      - run_names: list like ['run-1', 'run-2', ...] (for single, defaults to ['run-1'])
+    """
+    # Old layout: run-* at root
+    root_runs = discover_run_directories(exp_dir)
+    if root_runs:
+        return "root_runs", [d.name for d in root_runs]
+
+    # New layout: service_model at root, with run-* inside
+    sm_dirs = discover_service_model_dirs_in_exp(exp_dir)
+    run_names_set = set()
+    for sm in sm_dirs:
+        if not sm.is_dir():
+            continue
+        for d in sm.iterdir():
+            if d.is_dir() and d.name.startswith("run-"):
+                run_names_set.add(d.name)
+
+    if run_names_set:
+        return "nested_runs", sorted(run_names_set)
+
+    # Fallback single
+    return "single", ["run-1"]
+
+
+def collect_task_results_from_nested(
+    exp_dir: Path, run_name: str, force: bool = False
+) -> Dict[str, Dict[str, Any]]:
+    """Collect task results for the new layout: service_model at root and run-* inside each."""
+    results = {}
+    for service_model_dir in discover_service_model_dirs_in_exp(exp_dir):
+        run_dir = service_model_dir / run_name
+        if not run_dir.exists() or not run_dir.is_dir():
+            continue
+
+        service_model = service_model_dir.name
+        for task_dir in run_dir.iterdir():
+            if not task_dir.is_dir():
+                continue
+            if "__" not in task_dir.name:
+                continue
+            meta_path = task_dir / "meta.json"
+            if not meta_path.exists():
+                continue
+            try:
+                with open(meta_path, "r", encoding="utf-8") as f:
+                    meta = json.load(f)
+
+                # Skip results with pipeline errors unless force=True
+                if not force and has_pipeline_errors(meta):
+                    continue
+
+                # Use directory name as task_name (category_id__task_id format)
+                task_name = task_dir.name
+                task_key = f"{service_model}__{task_name}"
+                results[task_key] = {
+                    "success": meta.get("execution_result", {}).get("success", False),
+                    "error_message": meta.get("execution_result", {}).get(
+                        "error_message"
+                    ),
+                    "agent_execution_time": meta.get("agent_execution_time", 0),
+                    "task_execution_time": meta.get("task_execution_time", 0),
+                    "token_usage": meta.get("token_usage", {}),
+                    "turn_count": meta.get("turn_count", 0),
+                    "model_name_name": meta.get("model_name_name"),
+                    "meta": meta,  # Keep full meta for model_results
+                }
+            except Exception as e:
+                print(f"⚠️  Error reading {meta_path}: {e}")
+                continue
+
+    return results
+
 def has_pipeline_errors(meta: Dict[str, Any]) -> bool:
     """Check if a task result contains pipeline errors."""
     error_msg = meta.get("execution_result", {}).get("error_message", "")
@@ -127,7 +222,7 @@ def collect_task_results_from_run(
                     "task_execution_time": meta.get("task_execution_time", 0),
                     "token_usage": meta.get("token_usage", {}),
                     "turn_count": meta.get("turn_count", 0),
-                    "actual_model_name": meta.get("actual_model_name"),
+                    "model_name_name": meta.get("model_name_name"),
                     "meta": meta,  # Keep full meta for model_results
                 }
             except Exception as e:
@@ -164,13 +259,13 @@ def calculate_k_run_metrics(
             "total_output_tokens": 0,
             "total_tokens": 0,
             "total_turns": 0,
-            "actual_model_name": None,
+            "model_name_name": None,
         }
     )
 
     # Process each task
     for task_key in all_task_keys:
-        # Extract service__model from service__model__category__task format
+        # Extract model__service from model__service__category__task format
         parts = task_key.split("__")
         if len(parts) >= 2:
             service_model = f"{parts[0]}__{parts[1]}"
@@ -240,14 +335,14 @@ def calculate_k_run_metrics(
         service_model_metrics[service_model]["total_tokens"] += sum(task_total_tokens)
         service_model_metrics[service_model]["total_turns"] += sum(task_turns)
 
-        # Store actual_model_name from first available task result
-        if service_model_metrics[service_model]["actual_model_name"] is None:
+        # Store model_name_name from first available task result
+        if service_model_metrics[service_model]["model_name_name"] is None:
             for run_name in runs_to_process:
                 if run_name in all_runs_results:
                     run_results = all_runs_results[run_name]
                     task_result = run_results.get(task_key)
-                    if task_result and task_result.get("actual_model_name"):
-                        service_model_metrics[service_model]["actual_model_name"] = task_result["actual_model_name"]
+                    if task_result and task_result.get("model_name_name"):
+                        service_model_metrics[service_model]["model_name_name"] = task_result["model_name_name"]
                         break
 
         # pass@1: Will be calculated as avg@k later (skip individual task counting)
@@ -358,11 +453,19 @@ def calculate_k_run_metrics(
 def aggregate_single_run_results(
     exp_dir: Path, force: bool = False
 ) -> Dict[str, Dict[str, Any]]:
-    """Aggregate results for single-run experiment."""
+    """Aggregate results for single-run experiment.
+
+    New layout only: results/{exp}/service__model/run-1/{category__task}/...
+    """
     service_model_results = {}
 
-    for service_model_dir in discover_service_model_dirs(exp_dir):
+    for service_model_dir in discover_service_model_dirs_in_exp(exp_dir):
         service_model = service_model_dir.name
+
+        # Determine task root directory: run-1 in new layout
+        task_root = service_model_dir / "run-1"
+        if not task_root.exists() or not task_root.is_dir():
+            continue
 
         # Collect task results
         total_tasks = 0
@@ -372,9 +475,9 @@ def aggregate_single_run_results(
         total_output_tokens = 0
         total_tokens = 0
         total_turns = 0
-        actual_model_name = None
+        model_name_name = None
 
-        for task_dir in service_model_dir.iterdir():
+        for task_dir in task_root.iterdir():
             if not task_dir.is_dir():
                 continue
 
@@ -403,9 +506,9 @@ def aggregate_single_run_results(
                 total_tokens += token_usage.get("total_tokens", 0) or 0
                 total_turns += meta.get("turn_count", 0) or 0
                 
-                # Store actual_model_name from first available meta
-                if actual_model_name is None and meta.get("actual_model_name"):
-                    actual_model_name = meta.get("actual_model_name")
+                # Store model_name_name from first available meta
+                if model_name_name is None and meta.get("model_name_name"):
+                    model_name_name = meta.get("model_name_name")
 
             except Exception as e:
                 print(f"⚠️  Error reading {meta_path}: {e}")
@@ -428,7 +531,7 @@ def aggregate_single_run_results(
                 "avg_output_tokens": round(total_output_tokens / total_tasks, 4),
                 "avg_total_tokens": round(total_tokens / total_tasks, 4),
                 "avg_turns": round(total_turns / total_tasks, 4),
-                "actual_model_name": actual_model_name,
+                "model_name_name": model_name_name,
             }
 
     return service_model_results
@@ -456,7 +559,7 @@ def create_simplified_summary(
 
     for service_model in service_model_results.keys():
         if "__" in service_model:
-            service, model = service_model.split("__", 1)
+            model, service = service_model.split("__", 1)
             all_services.add(service)
             all_models.add(model)
 
@@ -475,7 +578,7 @@ def create_simplified_summary(
         model_service_data = []
 
         for service_model, metrics in service_model_results.items():
-            if "__" in service_model and service_model.split("__", 1)[1] == model:
+            if "__" in service_model and service_model.split("__", 1)[0] == model:
                 model_metrics["total_tasks"] += metrics["total_tasks"]
                 model_metrics["total_agent_execution_time"] += metrics.get(
                     "total_agent_execution_time", 0
@@ -529,11 +632,11 @@ def create_simplified_summary(
                 model_metrics["per_run_output_tokens"] = per_run_output_tokens
                 model_metrics["per_run_cost"] = per_run_cost
                 
-                # Set actual_model_name from first available service data
+                # Set model_name_name from first available service data
                 for service_model, metrics in service_model_results.items():
-                    if "__" in service_model and service_model.split("__", 1)[1] == model:
-                        if metrics.get("actual_model_name"):
-                            model_metrics["actual_model_name"] = metrics["actual_model_name"]
+                    if "__" in service_model and service_model.split("__", 1)[0] == model:
+                        if metrics.get("model_name_name"):
+                            model_metrics["model_name_name"] = metrics["model_name_name"]
                             break
 
             if k > 1:
@@ -697,8 +800,8 @@ def create_simplified_summary(
                         "per_run_cost": per_run_cost,
                     }
 
-                # Add actual_model_name to service-level metrics
-                formatted_metrics["actual_model_name"] = metrics.get("actual_model_name")
+                # Add model_name_name to service-level metrics
+                formatted_metrics["model_name_name"] = metrics.get("model_name_name")
                 summary[service][model] = formatted_metrics
 
     return summary
@@ -711,12 +814,10 @@ def generate_model_results(
     if single_run_models is None:
         single_run_models = []
 
-    if k > 1:
-        model_results_dir = exp_dir / "model_results"
-        run_dirs = discover_run_directories(exp_dir)
-    else:
-        model_results_dir = exp_dir / "model_results"
-        run_dirs = [exp_dir]
+    model_results_dir = exp_dir / "model_results"
+    run_names = discover_run_names(exp_dir)
+    if not run_names:
+        run_names = ["run-1"]
 
     # Remove existing model_results if it exists
     if model_results_dir.exists():
@@ -727,23 +828,25 @@ def generate_model_results(
     # Collect all task data organized by model
     model_task_data = defaultdict(dict)
 
-    for run_idx, run_dir in enumerate(run_dirs, 1):
-        run_name = f"run-{run_idx}" if k > 1 else "run-1"
-
-        for service_model_dir in discover_service_model_dirs(run_dir):
+    for run_name in run_names:
+        for service_model_dir in discover_service_model_dirs_in_exp(exp_dir):
             service_model = service_model_dir.name
 
             if "__" not in service_model:
                 continue
 
-            service, model = service_model.split("__", 1)
+            model, service = service_model.split("__", 1)
 
             # For single-run models, only process run-1
             is_single_run_model = any(m in model for m in single_run_models)
             if is_single_run_model and run_name != "run-1":
                 continue
 
-            for task_dir in service_model_dir.iterdir():
+            run_dir = service_model_dir / run_name
+            if not run_dir.exists() or not run_dir.is_dir():
+                continue
+
+            for task_dir in run_dir.iterdir():
                 if not task_dir.is_dir():
                     continue
 
@@ -811,12 +914,10 @@ def generate_task_results(
     if single_run_models is None:
         single_run_models = []
 
-    if k > 1:
-        task_results_dir = exp_dir / "task_results"
-        run_dirs = discover_run_directories(exp_dir)
-    else:
-        task_results_dir = exp_dir / "task_results"
-        run_dirs = [exp_dir]
+    task_results_dir = exp_dir / "task_results"
+    run_names = discover_run_names(exp_dir)
+    if not run_names:
+        run_names = ["run-1"]
 
     # Remove existing task_results if it exists
     if task_results_dir.exists():
@@ -833,23 +934,25 @@ def generate_task_results(
         }
     )
 
-    for run_idx, run_dir in enumerate(run_dirs, 1):
-        run_name = f"run-{run_idx}" if k > 1 else "run-1"
-
-        for service_model_dir in discover_service_model_dirs(run_dir):
+    for run_name in run_names:
+        for service_model_dir in discover_service_model_dirs_in_exp(exp_dir):
             service_model = service_model_dir.name
 
             if "__" not in service_model:
                 continue
 
-            service, model = service_model.split("__", 1)
+            model, service = service_model.split("__", 1)
 
             # For single-run models, only process run-1
             is_single_run_model = any(m in model for m in single_run_models)
             if is_single_run_model and run_name != "run-1":
                 continue
 
-            for task_dir in service_model_dir.iterdir():
+            run_dir = service_model_dir / run_name
+            if not run_dir.exists() or not run_dir.is_dir():
+                continue
+
+            for task_dir in run_dir.iterdir():
                 if not task_dir.is_dir():
                     continue
 
@@ -1358,28 +1461,26 @@ def main():
     if args.force:
         print("⚠️  Using --force: including incomplete/invalid results")
 
-    # Detect experiment type
-    run_dirs = discover_run_directories(exp_dir)
-    k = len(run_dirs) if run_dirs else 1
+    # Only support new layout (runs nested under service_model). If no run-*, treat as single run.
+    run_names = discover_run_names(exp_dir)
+    if run_names:
+        k = len(run_names)
+        print(f"📊 Detected {k}-run experiment structure (runs nested under service_model)")
 
-    if k > 1:
-        print(f"📊 Detected {k}-run experiment structure")
-
-        # Collect results from all runs
+        # Collect results from all nested runs
         all_runs_results = {}
-        for run_dir in run_dirs:
-            run_name = run_dir.name
+        for run_name in run_names:
             print(f"  Processing {run_name}...")
-            run_results = collect_task_results_from_run(run_dir, args.force)
+            run_results = collect_task_results_from_nested(exp_dir, run_name, args.force)
             all_runs_results[run_name] = run_results
 
         # Calculate k-run metrics
         service_model_metrics = calculate_k_run_metrics(
             all_runs_results, k, single_run_models
         )
-
     else:
-        print("📊 Detected single-run experiment")
+        print("📊 Detected single-run experiment (new layout expected under run-1)")
+        k = 1
         service_model_metrics = aggregate_single_run_results(exp_dir, args.force)
 
     if not service_model_metrics:
@@ -1393,10 +1494,7 @@ def main():
     )
 
     # Save summary.json
-    if k > 1:
-        summary_path = exp_dir / "summary.json"
-    else:
-        summary_path = exp_dir / "summary.json"
+    summary_path = exp_dir / "summary.json"
 
     with open(summary_path, "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2, ensure_ascii=False)
