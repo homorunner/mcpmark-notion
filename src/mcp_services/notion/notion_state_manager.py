@@ -856,7 +856,7 @@ class NotionStateManager(BaseStateManager):
         category: str,
         task_name: str,
         *,
-        max_retries: int = 2,
+        max_retries: int = 5,
         initial_wait_ms: int = 180_000,
     ) -> Tuple[str, str]:
         """Duplicates an initial state for a task, with retries for reliability."""
